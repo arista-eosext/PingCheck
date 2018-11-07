@@ -74,10 +74,10 @@ Please note, this uses the EOS SDK eAPI interaction module. You do not need to s
 configuration files, because it automatically goes into configuration mode.
 
 Additional dependencies and caveats:
-*This requires EOS SDK.
-*All new EOS releases include the SDK.
-*Tested on EOS release 4.21.1F
-*VRFs are not supported in this release.
+* This requires EOS SDK.
+* All new EOS releases include the SDK.
+* Tested on EOS release 4.21.1F
+* VRFs are not supported in this release.
 
 ## Example
 
