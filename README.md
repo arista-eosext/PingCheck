@@ -145,7 +145,7 @@ An RPM has been included that allows you to easily just install PingCheck as an 
 the file requirements. The RPM also installs the PingCheck SDK app in /usr/local/bin. This is the preferred distribution 
 method for this application.
 
-This release has been tested on EOS 4.21.1F.
+This release has been tested on EOS 4.20.5, 4.20.10 & 4.21.1F.
 
 License
 =======
