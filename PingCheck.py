@@ -155,22 +155,22 @@ def pingDUT(protocol,hostname, pingcount, source=None):
     if protocol == 4:
         if source is None:
             #i.e. don't specify a source interface.
-            process=sp.Popen("ping -c %s %s " % (pingcount,hostname), shell = True, stdout = sp.PIPE, stderr = sp.PIPE)
+            process=sp.Popen("ping -c %s %s -W 2 " % (pingcount,hostname), shell = True, stdout = sp.PIPE, stderr = sp.PIPE)
             output, error = process.communicate()
             failed = process.returncode
         else:
             #Specify a source interface
-            process=sp.Popen("ping -c %s -I %s %s " % (pingcount,source, hostname), shell = True, stdout = sp.PIPE, stderr = sp.PIPE)
+            process=sp.Popen("ping -c %s -I %s %s -W 2 " % (pingcount,source, hostname), shell = True, stdout = sp.PIPE, stderr = sp.PIPE)
             output, error = process.communicate()
             failed = process.returncode
     elif protocol == 6:
         if source is None:
-            process=sp.Popen("ping6 -c %s %s " % (pingcount,hostname), shell = True, stdout = sp.PIPE, stderr = sp.PIPE)
+            process=sp.Popen("ping6 -c %s %s -W 2 " % (pingcount,hostname), shell = True, stdout = sp.PIPE, stderr = sp.PIPE)
             output, error = process.communicate()
             failed = process.returncode
         else:
             #Specify a source interface
-            process=sp.Popen("ping6 -c %s -I %s %s " % (pingcount,source,hostname), shell = True, stdout = sp.PIPE, stderr = sp.PIPE)
+            process=sp.Popen("ping6 -c %s -I %s %s -W 2 " % (pingcount,source,hostname), shell = True, stdout = sp.PIPE, stderr = sp.PIPE)
             output, error = process.communicate()
             failed = process.returncode
 
