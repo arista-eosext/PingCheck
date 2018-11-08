@@ -42,6 +42,7 @@ daemon PingCheck
    option CONF_FAIL value /mnt/flash/failed.conf
    option CONF_RECOVER value /mnt/flash/recover.conf
    option PINGCOUNT value 2
+   option HOLDUP value 1
    option HOLDDOWN value 1
    option IPv4 value 10.1.1.1,10.1.2.1
    option SOURCE value et1
@@ -55,7 +56,9 @@ Config Option explanation:
     - CONF_RECOVER is the config file to apply the snippets of config changes
     after recovery of Neighbor. Mandatory parameter.
     - PINGCOUNT is the number of ICMP Ping Request messages to send. Default is 2.
-    - HOLDDOWN is the number of iterations to wait before declaring all hosts up or down. Default is 1
+    - HOLDUP is the number of iterations to wait before declaring all hosts down. Default is 1
+      which means take immediate action.
+    - HOLDDOWN is the number of iterations to wait before declaring all hosts up. Default is 1
       which means take immediate action.
     - SOURCE is the source interface (as instantiated to the kernel) to generate the pings fromself.
       This is optional. Default is to use RIB/FIB route to determine which interface to use as sourceself.
@@ -99,7 +102,11 @@ CURRENTSTATUS = 1
 #Number of ICMP pings to send to each host.
 PINGCOUNT = 2
 
-#Default number of failures before declaring a down or up neighbor(s). 1 means we react immediately
+#Default number of failures before declaring neighbor(s) down. 1 means we react immediately
+HOLDUP = 1
+#
+
+#Default number of failures before declaring neighbor(s) up. 1 means we react immediately
 HOLDDOWN = 1
 #
 
@@ -231,6 +238,13 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler):
             #We'll just use the default pingcount specified by global variable
             self.agentMgr.status_set("PINGCOUNT:", "%s" % PINGCOUNT)
 
+        global HOLDUP
+        if self.agentMgr.agent_option("HOLDUP"):
+            self.on_agent_option("HOLDUP", self.agentMgr.agent_option("HOLDUP"))
+        else:
+            #We'll just use the default holdup specified by global variable
+            self.agentMgr.status_set("HOLDUP:", "%s" % HOLDUP)
+
         global HOLDDOWN
         if self.agentMgr.agent_option("HOLDDOWN"):
             self.on_agent_option("HOLDDOWN", self.agentMgr.agent_option("HOLDDOWN"))
@@ -280,6 +294,13 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler):
             else:
                 self.tracer.trace3("Adding CONF_RECOVER %s" % value)
                 self.agentMgr.status_set("CONF_RECOVER:", "%s" % value)
+        if optionName == "HOLDUP":
+            if not value:
+                self.tracer.trace3("HOLDUP Deleted")
+                self.agentMgr.status_set("HOLDUP:", HOLDUP)
+            else:
+                self.tracer.trace3("Adding HOLDUP %s" % value)
+                self.agentMgr.status_set("HOLDUP:", "%s" % value)
         if optionName == "HOLDDOWN":
             if not value:
                 self.tracer.trace3("HOLDDOWN Deleted")
@@ -402,7 +423,7 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler):
             #If any are up, then we mark this as good
             #If ALL are down, then we mark as bad
             #We also need to mark the iteration number which is important
-            # for our holddown number.
+            # for our holdup/holddown number.
             #
 
             #We could just react to single failure or recovery. But this is not as versatile.
@@ -463,7 +484,7 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler):
                 #Determine, are we already down? If so, noop. If not, then we need to determine if we are at HOLDDOWN.
                 if CURRENTSTATUS == 1:
                 	#Determine if we need to do something
-                    if ITERATION == HOLDDOWN:
+                    if ITERATION == HOLDUP:
                     	syslog.syslog("PingCheck Failure State. Changing configuration for failed state")
                         # run config change failure
                         self.change_config('FAIL')
