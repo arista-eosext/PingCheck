@@ -134,9 +134,17 @@ def get_intf_ip_address(ifname):
     '''
     import socket, fcntl, struct
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    return socket.inet_ntoa(fcntl.ioctl(
-        s.fileno(), 0x8915,  # ioctl command SIOCGIFADDR
-        struct.pack('256s', ifname[:15]))[20:24])
+    try:
+        ifaddress = socket.inet_ntoa(fcntl.ioctl(
+                    s.fileno(), 0x8915,  # ioctl command SIOCGIFADDR
+                    struct.pack('256s', ifname[:15]))[20:24])
+    except:
+	    ifaddress = False
+
+    if ifaddress:
+      return ifaddress
+    else:
+      return False
 
 
 def pingDUT(protocol,hostname, pingcount, source=None):
@@ -419,8 +427,10 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler):
                     if self.agentMgr.agent_option("SOURCE"):
                         # We need to use the address binding to the interface. Easiest here so we don't
                         # need another external package is socket module.
-                        SOURCEIP=get_intf_ip_address(self.agentMgr.agent_option("SOURCE"))
-                        pingstatus = pingDUT(4,str(host),PINGS2SEND,SOURCEIP)
+                        if SOURCEIP:
+                            pingstatus = pingDUT(4,str(host),PINGS2SEND,SOURCEIP)
+                        else:
+                            pingstatus = False
                     else:
                         pingstatus = pingDUT(4,str(host),PINGS2SEND)
                     #After ping status, lets go over all the various test cases below
