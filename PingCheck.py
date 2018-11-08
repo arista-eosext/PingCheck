@@ -427,7 +427,8 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler):
                     if self.agentMgr.agent_option("SOURCE"):
                         # We need to use the address binding to the interface. Easiest here so we don't
                         # need another external package is socket module.
-                        if SOURCEIP:
+                        SOURCEIP=get_intf_ip_address(self.agentMgr.agent_option("SOURCE"))
+			if SOURCEIP:
                             pingstatus = pingDUT(4,str(host),PINGS2SEND,SOURCEIP)
                         else:
                             pingstatus = False
