@@ -25,29 +25,33 @@ To use PingCheck, after installing, add the following configuration snippets to 
 
 ```
 daemon PingCheck
-   exec /usr/local/bin/PingCheck 
-   option CHECKINTERVAL value 10
+   exec /usr/local/bin/PingCheck
+   option CHECKINTERVAL value 5
    option CONF_FAIL value /mnt/flash/failed.conf
    option CONF_RECOVER value /mnt/flash/recover.conf
-   option HOLDDOWN value 2
-   option IPv4 value 10.1.1.2,10.1.1.6
-   option PINGCOUNT value 3
-   option SOURCE value lo0
+   option PINGCOUNT value 2
+   option PINGTIMEOUT value 2
+   option HOLDDOWN value 1
+   option HOLDUP value 1
+   option IPv4 value 10.1.1.1,10.1.2.1
+   option SOURCE value et1
    no shutdown
 ```
 
 ```
 Config Option explanation:
-- CHECKINTERVAL is the time in seconds to check hosts. Default is 5 seconds.
-    - IPv4 is the address(s) to check. Mandatory parameter. Multiple addresses are comma separated.
+    - CHECKINTERVAL is the time in seconds to check hosts. Default is 5 seconds.
+    - IPv4 is the address(s) to check. Mandatory parameter. Multiple addresses are comma separated
     - CONF_FAIL is the config file to apply the snippets of config changes. Mandatory parameter.
-    - CONF_RECOVER is the config file to apply the snippets of config changes after recovery of Neighbor. Mandatory parameter. 
-    - PINGCOUNT is the number of ICMP Ping Request messages to send on each iteration. Default is 2.
-    - HOLDDOWN is the number of iterations to wait before declaring all hosts up or down. Default is 1
-      which means take immediate action. If CHECKINTERVAL is 10seconds and HOLDDOWN is 3, PingCheck will take action in 30seconds.
-    - SOURCE is the source interface (as instantiated to the kernel) to generate the pings from.
-      This is optional. Default is to use RIB/FIB route to determine which interface to use as source. Use interface names as 
-      shown with 'bash ifconfig'  
+    - CONF_RECOVER is the config file to apply the snippets of config changes
+      after recovery of Neighbor. Mandatory parameter.
+    - PINGCOUNT is the number of ICMP Ping Request messages to send. Default is 2.
+    - HOLDDOWN is the number of iterations to wait before declaring all hosts up. Default is 1
+      which means take immediate action.
+    - HOLDUP is the number of iterations to wait before declaring all hosts down. Default is 1
+    - SOURCE is the source interface (as instantiated to the kernel) to generate the pings fromself.
+      This is optional. Default is to use RIB/FIB route to determine which interface to use as sourceself.
+    - PINGTIMEOUT is the ICMP ping timeout in seconds. Default value is 2 seconds.
 ```
 
 The CONF_FAIL and CONF_RECOVER files are just a list of commands to run at failure or at recovery. These commands
@@ -76,7 +80,7 @@ configuration files, because it automatically goes into configuration mode.
 Additional dependencies and caveats:
 -This requires EOS SDK.
 -All new EOS releases include the SDK.
--Tested on EOS release 4.21.1F
+-Tested on EOS release 4.20.10 & 4.20.1
 -VRFs are not supported in this release.
 
 ## Example

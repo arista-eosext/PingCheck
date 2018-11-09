@@ -42,7 +42,9 @@ daemon PingCheck
    option CONF_FAIL value /mnt/flash/failed.conf
    option CONF_RECOVER value /mnt/flash/recover.conf
    option PINGCOUNT value 2
+   option PINGTIMEOUT value 2
    option HOLDDOWN value 1
+   option HOLDUP value 1
    option IPv4 value 10.1.1.1,10.1.2.1
    option SOURCE value et1
    no shutdown
@@ -53,12 +55,14 @@ Config Option explanation:
     - IPv4 is the address(s) to check. Mandatory parameter. Multiple addresses are comma separated
     - CONF_FAIL is the config file to apply the snippets of config changes. Mandatory parameter.
     - CONF_RECOVER is the config file to apply the snippets of config changes
-    after recovery of Neighbor. Mandatory parameter.
+      after recovery of Neighbor. Mandatory parameter.
     - PINGCOUNT is the number of ICMP Ping Request messages to send. Default is 2.
-    - HOLDDOWN is the number of iterations to wait before declaring all hosts up or down. Default is 1
+    - HOLDDOWN is the number of iterations to wait before declaring all hosts up. Default is 1
       which means take immediate action.
+    - HOLDUP is the number of iterations to wait before declaring all hosts down. Default is 1
     - SOURCE is the source interface (as instantiated to the kernel) to generate the pings fromself.
       This is optional. Default is to use RIB/FIB route to determine which interface to use as sourceself.
+    - PINGTIMEOUT is the ICMP ping timeout in seconds. Default value is 2 seconds.
 
 
 The CONF_FAIL and CONF_RECOVER files are just a list of commands to run at either Failure or at recovery. These commands
@@ -82,6 +86,11 @@ in your config change files. This is because, the EOS SDK eAPI interation module
 # Change log
 # ----------
 # Version 1.0.0  - 11/2/2018 - Jeremy Georges -- jgeorges@arista.com --  Initial Version
+# Version 1.2.0  - 11/9/2018 - J. Georges - Changed Source IP lookup to eAPI module. Using the socket call
+#                                           when the interface was shut down caused a core dump.
+#                                           Pinging now executed through eAPI module also. This removes the need
+#                                           for subprocess module.
+#                                           Added ping timeout option.
 #
 #*************************************************************************************
 #
@@ -99,9 +108,14 @@ CURRENTSTATUS = 1
 #Number of ICMP pings to send to each host.
 PINGCOUNT = 2
 
-#Default number of failures before declaring a down or up neighbor(s). 1 means we react immediately
+#Ping timeout
+PINGTIMEOUT = 2
+
+#Default number of failures before declaring a neighbor(s) up. 1 means we react immediately
 HOLDDOWN = 1
 #
+#Default number of failures before declaring a neighbor(s) down. 1 means we react immediately
+HOLDUP = 1
 
 #CONFIGCHECK 1 if the config looks ok, 0 if bad. Will set this as semaphore for
 #basic configuration check
@@ -123,66 +137,9 @@ import syslog
 import eossdk
 import os.path
 import os
+import simplejson
+import re
 
-
-#***************************
-#*     FUNCTIONS           *
-#***************************
-def get_intf_ip_address(ifname):
-    '''
-    Function to return IP bound to kernel interface
-    '''
-    import socket, fcntl, struct
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    return socket.inet_ntoa(fcntl.ioctl(
-        s.fileno(), 0x8915,  # ioctl command SIOCGIFADDR
-        struct.pack('256s', ifname[:15]))[20:24])
-
-
-def pingDUT(protocol,hostname, pingcount, source=None):
-    """
-    Ping a DUT(s).
-
-    Pass the following to the function:
-        protocol (Version 4 or 6)
-        host
-        pingcount (number of ICMP pings to send)
-
-        return False if ping fails
-        return True if ping succeeds
-    """
-    import subprocess as sp
-    if protocol == 4:
-        if source is None:
-            #i.e. don't specify a source interface.
-            process=sp.Popen("ping -c %s %s " % (pingcount,hostname), shell = True, stdout = sp.PIPE, stderr = sp.PIPE)
-            output, error = process.communicate()
-            failed = process.returncode
-        else:
-            #Specify a source interface
-            process=sp.Popen("ping -c %s -I %s %s " % (pingcount,source, hostname), shell = True, stdout = sp.PIPE, stderr = sp.PIPE)
-            output, error = process.communicate()
-            failed = process.returncode
-    elif protocol == 6:
-        if source is None:
-            process=sp.Popen("ping6 -c %s %s " % (pingcount,hostname), shell = True, stdout = sp.PIPE, stderr = sp.PIPE)
-            output, error = process.communicate()
-            failed = process.returncode
-        else:
-            #Specify a source interface
-            process=sp.Popen("ping6 -c %s -I %s %s " % (pingcount,source,hostname), shell = True, stdout = sp.PIPE, stderr = sp.PIPE)
-            output, error = process.communicate()
-            failed = process.returncode
-
-    else:
-        #Something is wrong if we land here. We want this as a belt and suspender test
-        print "Wrong protocol specified for ping check"
-        sys.exit(1)
-    #returns Failed if it failed....
-    if failed:
-        return False
-    else:
-        return True
 
 #***************************
 #*     CLASSES             *
@@ -220,7 +177,6 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler):
         if self.agentMgr.agent_option("CHECKINTERVAL"):
             self.on_agent_option("CHECKINTERVAL", self.agentMgr.agent_option("CHECKINTERVAL"))
         else:
-            #global CHECKINTERVAL
             #We'll just use the default time specified by global variable
             self.agentMgr.status_set("CHECKINTERVAL:", "%s" % CHECKINTERVAL)
 
@@ -238,6 +194,19 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler):
             #We'll just use the default holddown specified by global variable
             self.agentMgr.status_set("HOLDDOWN:", "%s" % HOLDDOWN)
 
+        global HOLDUP
+        if self.agentMgr.agent_option("HOLDUP"):
+            self.on_agent_option("HOLDUP", self.agentMgr.agent_option("HOLDUP"))
+        else:
+            #We'll just use the default holdup specified by global variable
+            self.agentMgr.status_set("HOLDUP:", "%s" % HOLDUP)
+
+        global PINGTIMEOUT
+        if self.agentMgr.agent_option("PINGTIMEOUT"):
+            self.on_agent_option("PINGTIMEOUT", self.agentMgr.agent_option("PINGTIMEOUT"))
+        else:
+            #We'll just use the default holddown specified by global variable
+            self.agentMgr.status_set("PINGTIMEOUT:", "%s" % PINGTIMEOUT)
 
         #Some basic mandatory variable checks. We'll check this when we have a
         #no shut on the daemon. Add some notes in comment and Readme.md to recommend
@@ -287,6 +256,13 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler):
             else:
                 self.tracer.trace3("Adding HOLDDOWN %s" % value)
                 self.agentMgr.status_set("HOLDDOWN:", "%s" % value)
+        if optionName == "HOLDUP":
+            if not value:
+                self.tracer.trace3("HOLDUP Deleted")
+                self.agentMgr.status_set("HOLDUP:", HOLDUP)
+            else:
+                self.tracer.trace3("Adding HOLDUP %s" % value)
+                self.agentMgr.status_set("HOLDUP:", "%s" % value)
         if optionName == "PINGCOUNT":
             if not value:
                 self.tracer.trace3("PINGCOUNT Deleted")
@@ -294,6 +270,13 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler):
             else:
                 self.tracer.trace3("Adding PINGCOUNT %s" % value)
                 self.agentMgr.status_set("PINGCOUNT:", "%s" % value)
+        if optionName == "PINGTIMEOUT":
+            if not value:
+                self.tracer.trace3("PINGTIMEOUT Deleted")
+                self.agentMgr.status_set("PINGTIMEOUT:", PINGCOUNT)
+            else:
+                self.tracer.trace3("Adding PINGTIMEOUT %s" % value)
+                self.agentMgr.status_set("PINGTIMEOUT:", "%s" % value)
         if optionName == "CHECKINTERVAL":
             if not value:
                 self.tracer.trace3("CHECKINTERVAL Deleted")
@@ -350,25 +333,18 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler):
             syslog.syslog("CONF_RECOVER %s is blank. You need at least one command listed." % TESTFILE)
             return 0
 
+        #Check pingtimeout settings if it was set. Can only be 0-3600
+        if self.agentMgr.agent_option("PINGTIMEOUT"):
+            if self.agentMgr.agent_option("PINGTIMEOUT") > 3600:
+                syslog.syslog("PINGTIMEOUT must not exceed 3600 seconds.")
+
         #Check the Source variable if it is defined..
-        #Perhaps easist is to use sub process and pull the list of valid interfaces
-        # ifconfig | grep '^et\|^lo\|^vlan' | cut -d":" -f1
         if self.agentMgr.agent_option("SOURCE"):
-            INTLIST=[]
-            import subprocess as sp
-            process = sp.Popen("ifconfig | grep '^et\|^lo\|^vlan' | cut -d\":\" -f1", shell = True, stdout = sp.PIPE, stderr = sp.PIPE)
-            #process = sp.Popen("ifconfig | grep '^et\|^lo\|^vlan' | cut -d\":\" -f1 | tr -d '\n'", shell = True, stdout = sp.PIPE, stderr = sp.PIPE)
-            output, error = process.communicate()
-            failed = process.returncode
-            #Output is char by char...we need readline here. Not sure why this is doing this..
-            for lines in output.splitlines():
-                INTLIST.append(lines)
-            #Now we have a list of all valid interfaces. We'll do this each time on_init because
-            # if this is a chassis, perhaps another line card is inserted.
-            if self.agentMgr.agent_option("SOURCE") in INTLIST:
-                syslog.syslog("Source Interface %s and Src IP %s will be used." % \
-                (self.agentMgr.agent_option("SOURCE"),get_intf_ip_address(self.agentMgr.agent_option("SOURCE"))))
+            #check using eAPI module.
+            if self.check_interface(self.agentMgr.agent_option("SOURCE")) == True:
+                syslog.syslog("Source Interface %s will be used." % (self.agentMgr.agent_option("SOURCE")))
             else:
+
                 syslog.syslog("Source Interface %s is not valid. " % self.agentMgr.agent_option("SOURCE"))
                 return 0
         #If we get here, then we're good!
@@ -384,6 +360,7 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler):
         global CURRENTSTATUS
         global PINGCOUNT
         global ITERATION
+
 
         #If CONFIGCHECK is not 1 a.k.a. ok, then we won't do anything. It means we have a config error.
         if CONFIGCHECK == 1:
@@ -417,12 +394,9 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler):
                 EachAddress = IPv4.split(',')
                 for host in EachAddress:
                     if self.agentMgr.agent_option("SOURCE"):
-                        # We need to use the address binding to the interface. Easiest here so we don't
-                        # need another external package is socket module.
-                        SOURCEIP=get_intf_ip_address(self.agentMgr.agent_option("SOURCE"))
-                        pingstatus = pingDUT(4,str(host),PINGS2SEND,SOURCEIP)
+                        pingstatus = self.pingDUTeAPI(4,str(host),PINGS2SEND,self.agentMgr.agent_option("SOURCE"))
                     else:
-                        pingstatus = pingDUT(4,str(host),PINGS2SEND)
+                        pingstatus = self.pingDUTeAPI(4,str(host),PINGS2SEND)
                     #After ping status, lets go over all the various test cases below
                     if pingstatus == True:
                         #Its alive - UP
@@ -442,13 +416,27 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler):
                         	#need to remove it from our GOOD list.
                             GOODIPV4.remove(host)
 
+            #We need to have some local variables to use for HOLDUP and HOLDDOWN because the admin
+            #might change the values from the default. So lets just check this on each iteration.
+            #But if the admin changes this in the middle of an interation check, we should make sure ITERATION
+            # is greater than or equal to the HOLDDOWN or HOLDUP values so we don't get stuck.
+
+            if self.agentMgr.agent_option("HOLDDOWN"):
+                HOLDDOWNLOCAL = self.agentMgr.agent_option("HOLDDOWN")
+            else:
+                HOLDDOWNLOCAL = HOLDDOWN
+            if self.agentMgr.agent_option("HOLDUP"):
+                HOLDUPLOCAL = self.agentMgr.agent_option("HOLDUP")
+            else:
+                HOLDUPLOCAL = HOLDUP
+
 			# Now we have all the ping state for each host. Lets do our additional logic here
             # Current implementaion is logical OR. So all we need is at least one host in GOODIPV4 list and we pass
             if len(GOODIPV4) > 0:
             	# We have some life here...now we need to determine whether to recover or not based on our HOLDDOWN.
                 if CURRENTSTATUS == 0:
                 	#We were down, now determine if we should recover yet.
-                    if ITERATION == HOLDDOWN:
+                    if ITERATION >= int(HOLDDOWNLOCAL):
                     	# Recover
                         CURRENTSTATUS = 1
                         ITERATION = 0
@@ -463,7 +451,7 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler):
                 #Determine, are we already down? If so, noop. If not, then we need to determine if we are at HOLDDOWN.
                 if CURRENTSTATUS == 1:
                 	#Determine if we need to do something
-                    if ITERATION == HOLDDOWN:
+                    if ITERATION >= int(HOLDUPLOCAL):
                     	syslog.syslog("PingCheck Failure State. Changing configuration for failed state")
                         # run config change failure
                         self.change_config('FAIL')
@@ -484,6 +472,65 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler):
             self.timeout_time_is(eossdk.now() + int(self.agentMgr.agent_option("CHECKINTERVAL")))
         else:
             self.timeout_time_is(eossdk.now() + int(CHECKINTERVAL))
+
+    def check_interface(self,SOURCE):
+        """
+        Check the interface to see if it is a legitmate interface
+
+        """
+        #Use EapiMgr to show interfaces and we'll make sure this
+        #interface is ok to use.
+        #Should we worry about capitalizing first char?
+        showint = self.EapiMgr.run_show_cmd("show interfaces")
+        stuff = simplejson.loads(showint.responses()[0])
+        output = stuff.get("interfaces")
+        if SOURCE.capitalize() in output.keys():
+            return True
+        else:
+            return False
+
+    def pingDUTeAPI(self,protocol,hostname, pingcount, source=None):
+        """
+        Ping a DUT(s).
+
+        Pass the following to the function:
+            protocol (Version 4 or 6)
+            host
+            pingcount (number of ICMP pings to send)
+
+            return False if ping fails
+            return True if ping succeeds
+        """
+        global PINGTIMEOUT
+        #
+        #Lets generate the entire ping command / string
+        if source is None:
+            pingline = "ping %s repeat %s" % (hostname,pingcount)
+        else:
+            pingline = "ping %s repeat %s source %s" % (hostname,pingcount,source)
+        if self.agentMgr.agent_option("PINGTIMEOUT"):
+            pingline += " timeout %s" % self.agentMgr.agent_option("PINGTIMEOUT")
+        else:
+            pingline += " timeout %s" % str(PINGTIMEOUT)
+        pinghost = self.EapiMgr.run_show_cmd(pingline)
+        pinghostresponse=simplejson.loads(pinghost.responses()[0])
+        output = pinghostresponse.get("messages")
+        received = re.findall(r"(\d+) received", output[0])
+
+        if len(received) == 0:
+            #If we get here, then interfaces are down and we can not ping anyway
+            #Error message   -- connect: Network is unreachable
+            #falls under this category. Pretty much any error message falls under this.
+            return False
+        else:
+            # we can safely assume this is a list as that is what re.findall returns
+            #if we get to this point because length check above was false.
+            if str(received[0]) == '0':
+                #we received 0 ICMP replies. Therefore host is down.
+                return False
+            else:
+                #we got something greater than 0. That is good enough of a check
+                return True
 
 
     def change_config(self, STATUS):
