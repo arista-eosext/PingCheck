@@ -117,9 +117,6 @@ HOLDDOWN = 1
 #Default number of failures before declaring a neighbor(s) down. 1 means we react immediately
 HOLDUP = 1
 
-#CONFIGCHECK 1 if the config looks ok, 0 if bad. Will set this as semaphore for
-#basic configuration check
-CONFIGCHECK = 1
 
 #We need a global list that will be there between iterations. Including after a reconfiguration
 DEADIPV4=[]
@@ -211,14 +208,9 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler):
         #Some basic mandatory variable checks. We'll check this when we have a
         #no shut on the daemon. Add some notes in comment and Readme.md to recommend
         #a shut and no shut every time you make parameter changes...
-        global CONFIGCHECK
-        if self.check_vars() == 1:
-            CONFIGCHECK = 1
-        else:
-            CONFIGCHECK = 0
 
-        #Since we're just starting, we have no idea of the health. We'll start as unknown.
-        self.agentMgr.status_set("HealthStatus:", "Unknown")
+        self.agentMgr.status_set("Health Status:", "Unknown")
+
 
         #Start our handler now.
         self.timeout_time_is(eossdk.now())
@@ -341,10 +333,7 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler):
         #Check the Source variable if it is defined..
         if self.agentMgr.agent_option("SOURCE"):
             #check using eAPI module.
-            if self.check_interface(self.agentMgr.agent_option("SOURCE")) == True:
-                syslog.syslog("Source Interface %s will be used." % (self.agentMgr.agent_option("SOURCE")))
-            else:
-
+            if self.check_interface(self.agentMgr.agent_option("SOURCE")) == False:
                 syslog.syslog("Source Interface %s is not valid. " % self.agentMgr.agent_option("SOURCE"))
                 return 0
         #If we get here, then we're good!
@@ -356,16 +345,18 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler):
         '''
         #Global variables are needed
         global CHECKINTERVAL
-        global CONFIGCHECK
         global CURRENTSTATUS
         global PINGCOUNT
         global ITERATION
 
 
-        #If CONFIGCHECK is not 1 a.k.a. ok, then we won't do anything. It means we have a config error.
-        if CONFIGCHECK == 1:
-            #Do our checking here...
+        # Just in case someone changes the options while daemon is running
+        # we should go ahead and check our parameters on each iteration.
+        # if its not a 1, then we fail check and will just wait till next iteration
+        # and will show this via the status.
+        if self.check_vars() == 1:
 
+            #Here we do all the fun work and testing
             IPv4 = self.agentMgr.agent_option("IPv4")
             if self.agentMgr.agent_option("PINGCOUNT"):
                 PINGS2SEND = self.agentMgr.agent_option("PINGCOUNT")
@@ -461,11 +452,19 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler):
                         ITERATION = 0
                     else:
                     	ITERATION += 1
-        #Set current state via HealthStatus with agentMgr.
-        if CURRENTSTATUS == 1:
-            self.agentMgr.status_set("HealthStatus:", "GOOD")
+
+            #Set current state via HealthStatus with agentMgr.
+            if CURRENTSTATUS == 1:
+                self.agentMgr.status_set("Health Status:", "GOOD")
+            else:
+                self.agentMgr.status_set("Health Status:", "FAIL")
+
         else:
-            self.agentMgr.status_set("HealthStatus:", "FAIL")
+            #If we failed the config check, then we land here and just skip any other processing
+            #and set Health status to INACTIVE.
+            #Once the config checks out, then we'll change it above with either GOOD or FAIL
+            #dependent on our ping checks.
+            self.agentMgr.status_set("Health Status:", "INACTIVE")
 
         #Wait for CHECKINTERVAL
         if self.agentMgr.agent_option("CHECKINTERVAL"):
