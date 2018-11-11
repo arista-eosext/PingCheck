@@ -43,8 +43,8 @@ daemon PingCheck
    option CONF_RECOVER value /mnt/flash/recover.conf
    option PINGCOUNT value 2
    option PINGTIMEOUT value 2
-   option HOLDDOWN value 1
-   option HOLDUP value 1
+   option HOLDDOWN value 0
+   option HOLDUP value 0
    option IPv4 value 10.1.1.1,10.1.2.1
    option SOURCE value et1
    no shutdown
