@@ -383,6 +383,7 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler):
             global GOODIPV4
             if IPv4:
                 EachAddress = IPv4.split(',')
+                startTime = eossdk.now()
                 for host in EachAddress:
                     if self.agentMgr.agent_option("SOURCE"):
                         pingstatus = self.pingDUTeAPI(4,str(host),PINGS2SEND,self.agentMgr.agent_option("SOURCE"))
@@ -467,10 +468,19 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler):
             self.agentMgr.status_set("Health Status:", "INACTIVE")
 
         #Wait for CHECKINTERVAL
+        runTime = eossdk.now() - startTime
         if self.agentMgr.agent_option("CHECKINTERVAL"):
-            self.timeout_time_is(eossdk.now() + int(self.agentMgr.agent_option("CHECKINTERVAL")))
+            if runTime > int(self.agentMgr.agent_option("CHECKINTERVAL")):
+                self.timeout_time_is(eossdk.now()) # Run now if Checkinterval shorter than run time.
+            else:
+                nextRun = int(self.agentMgr.agent_option("CHECKINTERVAL")) - runTime
+                self.timeout_time_is(eossdk.now() + nextRun)
         else:
-            self.timeout_time_is(eossdk.now() + int(CHECKINTERVAL))
+            if runTime > int(CHECKINTERVAL):
+                self.timeout_time_is(eossdk.now())
+            else:
+                nextRun = int(CHECKINTERVAL) - runTime
+                self.timeout_time_is(eossdk.now() + nextRun)
 
     def check_interface(self,SOURCE):
         """
