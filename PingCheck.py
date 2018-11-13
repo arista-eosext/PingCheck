@@ -43,8 +43,8 @@ daemon PingCheck
    option CONF_RECOVER value /mnt/flash/recover.conf
    option PINGCOUNT value 2
    option PINGTIMEOUT value 2
-   option HOLDDOWN value 1
-   option HOLDUP value 1
+   option HOLDDOWN value 0
+   option HOLDUP value 0
    option IPv4 value 10.1.1.1,10.1.2.1
    option SOURCE value et1
    no shutdown
@@ -57,9 +57,10 @@ Config Option explanation:
     - CONF_RECOVER is the config file to apply the snippets of config changes
       after recovery of Neighbor. Mandatory parameter.
     - PINGCOUNT is the number of ICMP Ping Request messages to send. Default is 2.
-    - HOLDDOWN is the number of iterations to wait before declaring all hosts up. Default is 1
+    - HOLDDOWN is the number of iterations to wait before declaring all hosts up. Default is 0
       which means take immediate action.
-    - HOLDUP is the number of iterations to wait before declaring all hosts down. Default is 1
+    - HOLDUP is the number of iterations to wait before declaring all hosts down. Default is 0
+      which means take immediate action.
     - SOURCE is the source interface (as instantiated to the kernel) to generate the pings fromself.
       This is optional. Default is to use RIB/FIB route to determine which interface to use as sourceself.
     - PINGTIMEOUT is the ICMP ping timeout in seconds. Default value is 2 seconds.
@@ -111,11 +112,11 @@ PINGCOUNT = 2
 #Ping timeout
 PINGTIMEOUT = 2
 
-#Default number of failures before declaring a neighbor(s) up. 1 means we react immediately
-HOLDDOWN = 1
+#Default number of failures before declaring a neighbor(s) up. 0 means we react immediately
+HOLDDOWN = 0
 #
-#Default number of failures before declaring a neighbor(s) down. 1 means we react immediately
-HOLDUP = 1
+#Default number of failures before declaring a neighbor(s) down. 0 means we react immediately
+HOLDUP = 0
 
 
 #We need a global list that will be there between iterations. Including after a reconfiguration
