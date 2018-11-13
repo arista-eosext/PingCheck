@@ -328,7 +328,7 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler):
 
         #Check pingtimeout settings if it was set. Can only be 0-3600
         if self.agentMgr.agent_option("PINGTIMEOUT"):
-            if self.agentMgr.agent_option("PINGTIMEOUT") > 3600:
+            if int(self.agentMgr.agent_option("PINGTIMEOUT")) > 3600:
                 syslog.syslog("PINGTIMEOUT must not exceed 3600 seconds.")
 
         #Check the Source variable if it is defined..
@@ -605,7 +605,7 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler):
 # MAIN
 #=============================================
 def main():
-    syslog.openlog(ident="PingCheck-ALERT-AGENT",logoption=syslog.LOG_PID, facility=syslog.LOG_LOCAL0)
+    syslog.openlog(ident="PingCheck-ALERT-AGENT",logoption=syslog.LOG_PID, facility=syslog.LOG_LOCAL4)
     sdk = eossdk.Sdk()
     PingCheck = PingCheckAgent(sdk, sdk.get_timeout_mgr(),sdk.get_eapi_mgr())
     sdk.main_loop(sys.argv)
