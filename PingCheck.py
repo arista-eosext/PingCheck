@@ -384,8 +384,8 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler):
             if IPv4:
                 EachAddress = IPv4.split(',')
                 for host in EachAddress:
-                    if self.agentMgr.agent_option("SOURCE"):
-                        pingstatus = self.pingDUTeAPI(4,str(host),PINGS2SEND,self.agentMgr.agent_option("SOURCE"))
+                    if SOURCEINTFADDR:
+                        pingstatus = self.pingDUTeAPI(4,str(host),PINGS2SEND,SOURCEINTFADDR)
                     else:
                         pingstatus = self.pingDUTeAPI(4,str(host),PINGS2SEND)
                     #After ping status, lets go over all the various test cases below
@@ -480,11 +480,17 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler):
         #Use EapiMgr to show interfaces and we'll make sure this
         #interface is ok to use.
         #Should we worry about capitalizing first char?
-        showint = self.EapiMgr.run_show_cmd("show interfaces")
-        stuff = simplejson.loads(showint.responses()[0])
-        output = stuff.get("interfaces")
-        if SOURCE.capitalize() in output.keys():
-            return True
+        global SOURCEINTFADDR
+        try:
+            showint = self.EapiMgr.run_show_cmd("show ip interface %s" % SOURCE)
+            interfaceID = simplejson.loads(showint.responses()[0])
+            for item in interfaceID['interfaces'].keys():
+                ipaddr = interfaceID['interfaces'][item]['interfaceAddress']['primaryIp']['address']
+        except:
+            ipaddr = ''
+        if ipaddr:
+            SOURCEINTFADDR = ipaddr
+            return ipaddr
         else:
             return False
 
