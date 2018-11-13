@@ -92,7 +92,7 @@ in your config change files. This is because, the EOS SDK eAPI interation module
 #                                           Pinging now executed through eAPI module also. This removes the need
 #                                           for subprocess module.
 #                                           Added ping timeout option.
-#
+# Version 1.3.1 - 11/13.2018 - Merge branch changes. Change syslog to Local4 so log messages show up in EOS log
 #*************************************************************************************
 #
 #
