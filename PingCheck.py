@@ -96,6 +96,7 @@ in your config change files. This is because, the EOS SDK eAPI interation module
 #                                           for subprocess module.
 #                                           Added ping timeout option.
 # Version 1.3.1 - 11/13.2018 - Merge branch changes. Change syslog to Local4 so log messages show up in EOS log
+# Version 1.4.0 - 2019-06-22 - Stuart Glenn - Added VRF support
 #*************************************************************************************
 #
 #
