@@ -485,6 +485,7 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler):
             #Once the config checks out, then we'll change it above with either GOOD or FAIL
             #dependent on our ping checks.
             self.agentMgr.status_set("Health Status:", "INACTIVE")
+            startTime = eossdk.now()
 
         #Wait for CHECKINTERVAL
         runTime = eossdk.now() - startTime
