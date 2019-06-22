@@ -47,6 +47,7 @@ daemon PingCheck
    option HOLDUP value 0
    option IPv4 value 10.1.1.1,10.1.2.1
    option SOURCE value et1
+   option VRF value custA
    no shutdown
 
 
@@ -63,6 +64,8 @@ Config Option explanation:
       which means take immediate action.
     - SOURCE is the source interface (as instantiated to the kernel) to generate the pings fromself.
       This is optional. Default is to use RIB/FIB route to determine which interface to use as sourceself.
+    - VRF is the routing context to route pings fromself.
+      This is optional. Default is to use default VRF.
     - PINGTIMEOUT is the ICMP ping timeout in seconds. Default value is 2 seconds.
 
 
@@ -108,6 +111,9 @@ CURRENTSTATUS = 1
 
 #Number of ICMP pings to send to each host.
 PINGCOUNT = 2
+
+#Routing context VRF by default
+DEFAULTVRF = 'default'
 
 #Ping timeout
 PINGTIMEOUT = 2
@@ -337,6 +343,18 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler):
             if self.check_interface(self.agentMgr.agent_option("SOURCE")) == False:
                 syslog.syslog("Source Interface %s is not valid. " % self.agentMgr.agent_option("SOURCE"))
                 return 0
+
+        #Check the Vrf variable if it is defined..
+        if self.agentMgr.agent_option("VRF"):
+            #check using eAPI module.
+            if self.check_vrf(self.agentMgr.agent_option("VRF")) == False:
+                syslog.syslog("Vrf %s is not valid. " % self.agentMgr.agent_option("VRF"))
+                return 0
+        else:
+            if self.check_vrf(DEFAULTVRF) == False:
+                syslog.syslog("Default vrf is not valid. " )
+                return 0
+
         #If we get here, then we're good!
         return 1
 
@@ -387,9 +405,9 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler):
                 startTime = eossdk.now()
                 for host in EachAddress:
                     if SOURCEINTFADDR:
-                        pingstatus = self.pingDUTeAPI(4,str(host),PINGS2SEND,SOURCEINTFADDR)
+                        pingstatus = self.pingDUTeAPI(4,SOURCEVRF,str(host),PINGS2SEND,SOURCEINTFADDR)
                     else:
-                        pingstatus = self.pingDUTeAPI(4,str(host),PINGS2SEND)
+                        pingstatus = self.pingDUTeAPI(4,SOURCEVRF,str(host),PINGS2SEND)
                     #After ping status, lets go over all the various test cases below
                     if pingstatus == True:
                         #Its alive - UP
@@ -505,12 +523,35 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler):
         else:
             return False
 
-    def pingDUTeAPI(self,protocol,hostname, pingcount, source=None):
+    def check_vrf(self,VRF):
+        """
+        Check the VRF to see if it is a legitmate VRF
+
+        """
+        #Use EapiMgr to show vrf and we'll make sure this
+        #interface is ok to use.
+        global SOURCEVRF
+        try:
+            showv = self.EapiMgr.run_show_cmd("show vrf %s" % VRF)
+            vrfs = simplejson.loads(showv.responses()[0])
+            for item in vrfs['vrfs'].keys():
+                if vrfs['vrfs'][item]['vrfState'] == 'up':
+                    vrfName = item
+        except Exception as e:
+            vrfName = ''
+        if vrfName:
+            SOURCEVRF = vrfName
+            return vrfName
+        else:
+            return False
+
+    def pingDUTeAPI(self,protocol,vrf,hostname, pingcount, source=None):
         """
         Ping a DUT(s).
 
         Pass the following to the function:
             protocol (Version 4 or 6)
+            vrf
             host
             pingcount (number of ICMP pings to send)
 
@@ -521,9 +562,9 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler):
         #
         #Lets generate the entire ping command / string
         if source is None:
-            pingline = "ping %s repeat %s" % (hostname,pingcount)
+            pingline = "ping vrf %s %s repeat %s" % (vrf,hostname,pingcount)
         else:
-            pingline = "ping %s repeat %s source %s" % (hostname,pingcount,source)
+            pingline = "ping vrf %s %s repeat %s source %s" % (vrf,hostname,pingcount,source)
         if self.agentMgr.agent_option("PINGTIMEOUT"):
             pingline += " timeout %s" % self.agentMgr.agent_option("PINGTIMEOUT")
         else:
