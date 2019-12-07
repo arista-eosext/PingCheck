@@ -292,7 +292,7 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler):
         Do some basic config checking. Return 1 if all is good. Else return
         0 if config is missing a key parameter and send a syslog message so user
         knows what is wrong.
-        Very basic existance testing here. Maybe add later some syntax testing...
+        Very basic testing here. Maybe add later some syntax testing...
         '''
 
         #Check IP LIST.
