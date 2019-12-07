@@ -93,6 +93,8 @@ in your config change files. This is because, the EOS SDK eAPI interation module
 #                                           for subprocess module.
 #                                           Added ping timeout option.
 # Version 1.3.1 - 11/13.2018 - Merge branch changes. Change syslog to Local4 so log messages show up in EOS log
+# Version 1.4.0 - 12/06/2018 - Fixed bug with startTime variable checking which could
+#                              lead to a core dump if no fail/recover files were found.
 #*************************************************************************************
 #
 #
@@ -350,6 +352,12 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler):
         global PINGCOUNT
         global ITERATION
 
+        # Create a time stamp of when we begin. Depending on the ping counts,
+        # the number of IP's to check, and the ping timeout - we may need to
+        # compensate when we start our next iteration. This will be even more
+        # pronounced if the CHECKINTERVAL is very short.
+        # This can cause our reaction time to a failed state to drift significantly.
+        startTime = eossdk.now()
 
         # Just in case someone changes the options while daemon is running
         # we should go ahead and check our parameters on each iteration.
@@ -384,7 +392,7 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler):
             global GOODIPV4
             if IPv4:
                 EachAddress = IPv4.split(',')
-                startTime = eossdk.now()
+
                 for host in EachAddress:
                     if SOURCEINTFADDR:
                         pingstatus = self.pingDUTeAPI(4,str(host),PINGS2SEND,SOURCEINTFADDR)
@@ -468,7 +476,12 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler):
             #dependent on our ping checks.
             self.agentMgr.status_set("Health Status:", "INACTIVE")
 
-        #Wait for CHECKINTERVAL
+        # Wait for CHECKINTERVAL - if memory serves, I think this is to deal with
+        # time drift especially if many of the pings timeout. This can really make
+        # our reaction time too slow and push out a reaction significantly.
+        # If the delta between the time we started our interation to this point of
+        # execution, then we need to go through our checks again immediately.
+        # If all is good, runTime ends up being pretty close to zero for the most part.
         runTime = eossdk.now() - startTime
         if self.agentMgr.agent_option("CHECKINTERVAL"):
             if runTime > int(self.agentMgr.agent_option("CHECKINTERVAL")):
@@ -482,6 +495,7 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler):
             else:
                 nextRun = int(CHECKINTERVAL) - runTime
                 self.timeout_time_is(eossdk.now() + nextRun)
+
 
     def check_interface(self,SOURCE):
         """
