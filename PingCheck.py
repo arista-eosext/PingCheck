@@ -139,7 +139,10 @@ import os.path
 import os
 import simplejson
 import re
+import subprocess
 
+__author__ = 'Jeremy Georges'
+__version__ = '1.4.0'
 
 #***************************
 #*     CLASSES             *
@@ -153,6 +156,9 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler):
         eossdk.TimeoutHandler.__init__(self, timeoutMgr)
         self.tracer.trace0("Python agent constructed")
         self.EapiMgr = EapiMgr
+
+        # TODO, clean up global variables, and just make them an instance
+        # created under __init__
 
 
     def on_initialized(self):
@@ -518,6 +524,22 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler):
             return ipaddr
         else:
             return False
+
+    def pingDUT(self,protocol,hostname, pingcount, source=None):
+        """
+        Ping a DUT(s).
+
+        Pass the following to the function:
+            protocol (Version 4 or 6)
+            host
+            pingcount (number of ICMP pings to send)
+
+            return False if ping fails
+            return True if ping succeeds
+        """
+        global PINGTIMEOUT
+        pass
+
 
     def pingDUTeAPI(self,protocol,hostname, pingcount, source=None):
         """
