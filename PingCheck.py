@@ -489,22 +489,23 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler, eossdk.VrfHandle
                     else:
                     	self.ITERATION += 1
 
-            #Set current state via HealthStatus with agentMgr.
+            # Set current state via HealthStatus with agentMgr.
             if self.CURRENTSTATUS == 1:
                 self.agentMgr.status_set("Health Status:", "GOOD")
             else:
                 self.agentMgr.status_set("Health Status:", "FAIL")
 
         else:
-            #If we failed the config check, then we land here and just skip any other processing
-            #and set Health status to INACTIVE.
-            #Once the config checks out, then we'll change it above with either GOOD or FAIL
-            #dependent on our ping checks.
+            # If we failed the config check, then we land here and just skip any other processing
+            # and set Health status to INACTIVE.
+            # Once the config checks out, then we'll change it above with either GOOD or FAIL
+            # dependent on our ping checks.
             self.agentMgr.status_set("Health Status:", "INACTIVE")
 
-        # Wait for CHECKINTERVAL - if memory serves, I think this is to deal with
-        # time drift especially if many of the pings timeout. This can really make
-        # our reaction time too slow and push out a reaction significantly.
+        # Wait for CHECKINTERVAL - if memory serves, I think I added this is to deal with
+        # time drift especially if many of the pings timeout and PINGTIMEOUT is set to a
+        # high value. This can really make our reaction time too slow
+        # and push out a reaction significantly.
         # If the delta between the time we started our interation to this point of
         # execution, then we need to go through our checks again immediately.
         # If all is good, runTime ends up being pretty close to zero for the most part.
@@ -528,9 +529,9 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler, eossdk.VrfHandle
         Check the interface to see if it is a legitmate interface
 
         """
-        #Use EapiMgr to show interfaces and we'll make sure this
-        #interface is ok to use.
-        #Should we worry about capitalizing first char?
+        # Use EapiMgr to show interfaces and we'll make sure this
+        # interface is ok to use.
+        # Should we worry about capitalizing first char?
         try:
             showint = self.EapiMgr.run_show_cmd("show ip interface %s" % SOURCE)
             interfaceID = simplejson.loads(showint.responses()[0])
@@ -548,7 +549,6 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler, eossdk.VrfHandle
         """
         Ping a DUT(s).
         """
-
 
         # Create a list of commands for subprocess Popen
         vrf_commands = ['sudo','ip','netns','exec']
@@ -598,7 +598,7 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler, eossdk.VrfHandle
                 return False
 
         if ping_host.returncode == 0:
-            #Ping is good
+            # Ping is good
             return True
         else:
             return False
@@ -617,13 +617,13 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler, eossdk.VrfHandle
             self.tracer.trace0("Status FAIL. Applying config changes")
             with open(CONF_FAIL) as fh:
                 configfile = fh.readlines()
-            #Strip out the whitespace
+            # Strip out the whitespace
             configfile = [x.strip() for x in configfile]
 
-            #Check to make sure user has not specified 'enable' as the first command. This will error  in command mode
+            # Check to make sure user has not specified 'enable' as the first command. This will error  in command mode
             if configfile[0] == 'enable':
                 del configfile[0]
-            #Now apply config changes
+            # Now apply config changes
             try:
                 applyconfig = self.EapiMgr.run_config_cmds([z for z in configfile])
                 if(applyconfig.success()):
@@ -637,14 +637,14 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler, eossdk.VrfHandle
             self.tracer.trace0("Status Recover. Applying config changes.")
             with open(CONF_RECOVER) as fh:
                 configfile = fh.readlines()
-            #Strip out the whitespace
+            # Strip out the whitespace
             configfile = [x.strip() for x in configfile]
 
-            #Check to make sure user has not specified 'enable' as the first command. This will error  in command mode
+            # Check to make sure user has not specified 'enable' as the first command. This will error  in command mode
             if configfile[0] == 'enable':
                 del configfile[0]
 
-            #Now apply config changes
+            # Now apply config changes
             try:
                 applyconfig = self.EapiMgr.run_config_cmds([z for z in configfile])
                 if(applyconfig.success()):

@@ -35,6 +35,7 @@ daemon PingCheck
    option HOLDUP value 1
    option IPv4 value 10.1.1.1,10.1.2.1
    option SOURCE value et1
+   option VRF value mgmt
    no shutdown
 ```
 
@@ -51,6 +52,8 @@ Config Option explanation:
     - HOLDUP is the number of iterations to wait before declaring all hosts down. Default is 1
     - SOURCE is the source interface (as instantiated to the kernel) to generate the pings fromself.
       This is optional. Default is to use RIB/FIB route to determine which interface to use as sourceself.
+    - VRF is the name of the VRF in which to source the pings. This is optional. For default VRF, no need
+      to specify this option.
     - PINGTIMEOUT is the ICMP ping timeout in seconds. Default value is 2 seconds.
 ```
 
@@ -78,10 +81,9 @@ Please note, this uses the EOS SDK eAPI interaction module. You do not need to s
 configuration files, because it automatically goes into configuration mode.
 
 Additional dependencies and caveats:
--This requires EOS SDK.
--All new EOS releases include the SDK.
--Tested on EOS release 4.20.10 & 4.20.1
--VRFs are not supported in this release.
+- This requires EOS SDK.
+- All new EOS releases include the SDK.
+- Tested on EOS release 4.22.3, 4.20.10 & 4.20.1
 
 ## Example
 
@@ -149,7 +151,12 @@ An RPM has been included that allows you to easily just install PingCheck as an 
 the file requirements. The RPM also installs the PingCheck SDK app in /usr/local/bin. This is the preferred distribution 
 method for this application.
 
-This release has been tested on EOS 4.21.1F.
+This release has been tested on EOS 4.22.3 & 4.21.1F.
+
+# WHAT'S NEW:
+- RPM now supports both 32 & 64bit EOS
+- VRF support
+- Additional syntax checking
 
 License
 =======
