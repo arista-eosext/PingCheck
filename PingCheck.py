@@ -45,6 +45,7 @@ daemon PingCheck
    option PINGTIMEOUT value 2
    option HOLDDOWN value 0
    option HOLDUP value 0
+   option VRF value mgmt
    option IPv4 value 10.1.1.1,10.1.2.1
    option SOURCE value et1
    no shutdown
@@ -61,6 +62,8 @@ Config Option explanation:
       which means take immediate action.
     - HOLDUP is the number of iterations to wait before declaring all hosts down. Default is 0
       which means take immediate action.
+    - VRF is the VRF name to use to generate the ICMP pings. If the default is used, then just leave
+      blank and it will use the default VRF.
     - SOURCE is the source interface (as instantiated to the kernel) to generate the pings fromself.
       This is optional. Default is to use RIB/FIB route to determine which interface to use as sourceself.
     - PINGTIMEOUT is the ICMP ping timeout in seconds. Default value is 2 seconds.
@@ -95,38 +98,10 @@ in your config change files. This is because, the EOS SDK eAPI interation module
 # Version 1.3.1 - 11/13.2018 - Merge branch changes. Change syslog to Local4 so log messages show up in EOS log
 # Version 1.4.0 - 12/06/2018 - Fixed bug with startTime variable checking which could
 #                              lead to a core dump if no fail/recover files were found.
+#                              Added vrf support.
 #*************************************************************************************
 #
 #
-#****************************
-#GLOBAL VARIABLES -         *
-#****************************
-# These are the defaults. The config can override these
-#Default check Interval in seconds
-CHECKINTERVAL = 5
-#
-#CURRENTSTATUS   1 is Good, 0 is Down
-CURRENTSTATUS = 1
-
-#Number of ICMP pings to send to each host.
-PINGCOUNT = 2
-
-#Ping timeout
-PINGTIMEOUT = 2
-
-#Default number of failures before declaring a neighbor(s) up. 0 means we react immediately
-HOLDDOWN = 0
-#
-#Default number of failures before declaring a neighbor(s) down. 0 means we react immediately
-HOLDUP = 0
-
-
-#We need a global list that will be there between iterations. Including after a reconfiguration
-DEADIPV4=[]
-GOODIPV4=[]
-
-#Global counter that we'll use between iterations
-ITERATION = 0
 
 #****************************
 #*     MODULES              *
@@ -139,7 +114,9 @@ import os.path
 import os
 import simplejson
 import re
-import subprocess
+import subprocess as sp
+import socket
+
 
 __author__ = 'Jeremy Georges'
 __version__ = '1.4.0'
@@ -147,18 +124,49 @@ __version__ = '1.4.0'
 #***************************
 #*     CLASSES             *
 #***************************
-class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler):
-    def __init__(self, sdk, timeoutMgr,EapiMgr):
+
+class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler, eossdk.VrfHandler):
+    def __init__(self, sdk, timeoutMgr,VrfMgr,EapiMgr):
         self.agentMgr = sdk.get_agent_mgr()
         self.tracer = eossdk.Tracer("PingCheckPythonAgent")
         eossdk.AgentHandler.__init__(self, self.agentMgr)
         #Setup timeout handler
         eossdk.TimeoutHandler.__init__(self, timeoutMgr)
         self.tracer.trace0("Python agent constructed")
+        eossdk.VrfHandler.__init__(self, VrfMgr)
+        self.VrfMgr = VrfMgr
         self.EapiMgr = EapiMgr
 
-        # TODO, clean up global variables, and just make them an instance
-        # created under __init__
+        # These are the defaults. The config can override these
+        # Make them an instance created under __init__ .
+        # Its a lot cleaner than creating global variables.
+        self.SOURCEINTFADDR = None
+
+        # Default number of ICMP pings to send to each host.
+        self.PINGCOUNT = 2
+
+        # Default Ping timeout
+        self.PINGTIMEOUT = 2
+
+        # Default number of failures before declaring a neighbor(s) up. 0 means we react immediately
+        self.HOLDDOWN = 0
+
+        # Default number of failures before declaring a neighbor(s) down. 0 means we react immediately
+        self.HOLDUP = 0
+
+        # Default check Interval in seconds
+        self.CHECKINTERVAL = 5
+        #
+
+        # CURRENTSTATUS   1 is Good, 0 is Down. Use this as a flag for status.
+        self.CURRENTSTATUS = 1
+
+        # Global counter that we'll use between iterations
+        self.ITERATION = 0
+
+        # We need a global list that will be there between iterations. Including after a reconfiguration
+        self.DEADIPV4=[]
+        self.GOODIPV4=[]
 
 
     def on_initialized(self):
@@ -179,40 +187,35 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler):
 
         #Lets check the extra parameters and see if we should override the defaults
         #This is mostly for the status message.
-        global CHECKINTERVAL
         if self.agentMgr.agent_option("CHECKINTERVAL"):
             self.on_agent_option("CHECKINTERVAL", self.agentMgr.agent_option("CHECKINTERVAL"))
         else:
             #We'll just use the default time specified by global variable
-            self.agentMgr.status_set("CHECKINTERVAL:", "%s" % CHECKINTERVAL)
+            self.agentMgr.status_set("CHECKINTERVAL:", "%s" % self.CHECKINTERVAL)
 
-        global PINGCOUNT
         if self.agentMgr.agent_option("PINGCOUNT"):
             self.on_agent_option("PINGCOUNT", self.agentMgr.agent_option("PINGCOUNT"))
         else:
             #We'll just use the default pingcount specified by global variable
-            self.agentMgr.status_set("PINGCOUNT:", "%s" % PINGCOUNT)
+            self.agentMgr.status_set("PINGCOUNT:", "%s" % self.PINGCOUNT)
 
-        global HOLDDOWN
         if self.agentMgr.agent_option("HOLDDOWN"):
             self.on_agent_option("HOLDDOWN", self.agentMgr.agent_option("HOLDDOWN"))
         else:
             #We'll just use the default holddown specified by global variable
-            self.agentMgr.status_set("HOLDDOWN:", "%s" % HOLDDOWN)
+            self.agentMgr.status_set("HOLDDOWN:", "%s" % self.HOLDDOWN)
 
-        global HOLDUP
         if self.agentMgr.agent_option("HOLDUP"):
             self.on_agent_option("HOLDUP", self.agentMgr.agent_option("HOLDUP"))
         else:
-            #We'll just use the default holdup specified by global variable
-            self.agentMgr.status_set("HOLDUP:", "%s" % HOLDUP)
+            # We'll just use the default holdup specified by instance of variable
+            self.agentMgr.status_set("HOLDUP:", "%s" % self.HOLDUP)
 
-        global PINGTIMEOUT
         if self.agentMgr.agent_option("PINGTIMEOUT"):
             self.on_agent_option("PINGTIMEOUT", self.agentMgr.agent_option("PINGTIMEOUT"))
         else:
-            #We'll just use the default holddown specified by global variable
-            self.agentMgr.status_set("PINGTIMEOUT:", "%s" % PINGTIMEOUT)
+            # We'll just use the default holddown specified by instance variable
+            self.agentMgr.status_set("PINGTIMEOUT:", "%s" % self.PINGTIMEOUT)
 
         #Some basic mandatory variable checks. We'll check this when we have a
         #no shut on the daemon. Add some notes in comment and Readme.md to recommend
@@ -253,38 +256,45 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler):
         if optionName == "HOLDDOWN":
             if not value:
                 self.tracer.trace3("HOLDDOWN Deleted")
-                self.agentMgr.status_set("HOLDDOWN:", HOLDDOWN)
+                self.agentMgr.status_set("HOLDDOWN:", self.HOLDDOWN)
             else:
                 self.tracer.trace3("Adding HOLDDOWN %s" % value)
                 self.agentMgr.status_set("HOLDDOWN:", "%s" % value)
         if optionName == "HOLDUP":
             if not value:
                 self.tracer.trace3("HOLDUP Deleted")
-                self.agentMgr.status_set("HOLDUP:", HOLDUP)
+                self.agentMgr.status_set("HOLDUP:", self.HOLDUP)
             else:
                 self.tracer.trace3("Adding HOLDUP %s" % value)
                 self.agentMgr.status_set("HOLDUP:", "%s" % value)
         if optionName == "PINGCOUNT":
             if not value:
                 self.tracer.trace3("PINGCOUNT Deleted")
-                self.agentMgr.status_set("PINGCOUNT:", PINGCOUNT)
+                self.agentMgr.status_set("PINGCOUNT:", self.PINGCOUNT)
             else:
                 self.tracer.trace3("Adding PINGCOUNT %s" % value)
                 self.agentMgr.status_set("PINGCOUNT:", "%s" % value)
         if optionName == "PINGTIMEOUT":
             if not value:
                 self.tracer.trace3("PINGTIMEOUT Deleted")
-                self.agentMgr.status_set("PINGTIMEOUT:", PINGCOUNT)
+                self.agentMgr.status_set("PINGTIMEOUT:", self.PINGTIMEOUT)
             else:
                 self.tracer.trace3("Adding PINGTIMEOUT %s" % value)
                 self.agentMgr.status_set("PINGTIMEOUT:", "%s" % value)
         if optionName == "CHECKINTERVAL":
             if not value:
                 self.tracer.trace3("CHECKINTERVAL Deleted")
-                self.agentMgr.status_set("CHECKINTERVAL:", CHECKINTERVAL)
+                self.agentMgr.status_set("CHECKINTERVAL:", self.CHECKINTERVAL)
             else:
                 self.tracer.trace3("Adding CHECKINTERVAL %s" % value)
                 self.agentMgr.status_set("CHECKINTERVAL:", "%s" % value)
+        if optionName == "VRF":
+            if not value:
+                self.tracer.trace3("VRF Deleted")
+                self.agentMgr.status_set("VRF:", "Default")
+            else:
+                self.tracer.trace3("Adding VRF %s" % value)
+                self.agentMgr.status_set("VRF:", "%s" % value)
 
     def on_agent_enabled(self, enabled):
         #When shutdown set status and then shutdown
@@ -303,11 +313,23 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler):
         Very basic testing here. Maybe add later some syntax testing...
         '''
 
-        #Check IP LIST.
-        #TODO, parse the IPv4 list and make sure there are no typos.
+        # Check IP LIST.
         if not self.agentMgr.agent_option("IPv4"):
             syslog.syslog("IPv4 parameter is not set. This is a mandatory parameter")
             return 0
+
+        # Parse the IPv4 list and make sure there are no typos.
+        # Let's just ask socket.inet_aton if valid.
+        if self.agentMgr.agent_option("IPv4"):
+            # Let's split this.
+            for _eachip in self.agentMgr.agent_option("IPv4").split(','):
+                try:
+                    socket.inet_aton(_eachip)
+                except socket.error:
+                    # IP is not legal.
+                    syslog.syslog("IPv4 address %s is not valid." % str(_eachip))
+                    return 0
+
 
         #Make sure CONF file mandatory parameters are set
         if not self.agentMgr.agent_option("CONF_FAIL"):
@@ -338,25 +360,32 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler):
         if self.agentMgr.agent_option("PINGTIMEOUT"):
             if int(self.agentMgr.agent_option("PINGTIMEOUT")) > 3600:
                 syslog.syslog("PINGTIMEOUT must not exceed 3600 seconds.")
+                return 0
 
         #Check the Source variable if it is defined..
         if self.agentMgr.agent_option("SOURCE"):
-            #check using eAPI module.
+            # check using eAPI module. And return the IP of interface.
+            # we need to do this, because if interface is down, ping can choose
+            # another interface with unknown results.
             if self.check_interface(self.agentMgr.agent_option("SOURCE")) == False:
                 syslog.syslog("Source Interface %s is not valid. " % self.agentMgr.agent_option("SOURCE"))
                 return 0
+
+        # If VRF option set, check to make sure it really exists.
+        if self.agentMgr.agent_option("VRF"):
+                if not self.VrfMgr.exists(self.agentMgr.agent_option("VRF")):
+                    #This means the VRF does not exist
+                    syslog.syslog("VRF %s does not exist." % self.agentMgr.agent_option("VRF"))
+                    return 0
+
         #If we get here, then we're good!
+        #
         return 1
 
     def on_timeout(self):
         '''
          This is the function/method where we do the exciting stuff :-)
         '''
-        #Global variables are needed
-        global CHECKINTERVAL
-        global CURRENTSTATUS
-        global PINGCOUNT
-        global ITERATION
 
         # Create a time stamp of when we begin. Depending on the ping counts,
         # the number of IP's to check, and the ping timeout - we may need to
@@ -372,12 +401,7 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler):
         if self.check_vars() == 1:
 
             #Here we do all the fun work and testing
-            IPv4 = self.agentMgr.agent_option("IPv4")
-            if self.agentMgr.agent_option("PINGCOUNT"):
-                PINGS2SEND = self.agentMgr.agent_option("PINGCOUNT")
-            else:
-                #Else we'll use the default value of PINGCOUNT
-                PINGS2SEND=PINGCOUNT
+
 
             #Check state, are we UP or FAILED state?
             #If up, lets check each of our addresses.
@@ -394,83 +418,79 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler):
             #this an issue.
             #Lets test each host in list and then we will populate DEAD or GOOD global list.
             #Then it is easier to do our logic or change it after all the checks.
-            global DEADIPV4
-            global GOODIPV4
+
+            IPv4 = self.agentMgr.agent_option("IPv4")
             if IPv4:
                 EachAddress = IPv4.split(',')
-
                 for host in EachAddress:
-                    if SOURCEINTFADDR:
-                        pingstatus = self.pingDUTeAPI(4,str(host),PINGS2SEND,SOURCEINTFADDR)
-                    else:
-                        pingstatus = self.pingDUTeAPI(4,str(host),PINGS2SEND)
+                    pingstatus = self.pingDUT(str(host))
                     #After ping status, lets go over all the various test cases below
                     if pingstatus == True:
                         #Its alive - UP
                         #Check to see if it was in our dead list
-                        if host in DEADIPV4:
+                        if host in self.DEADIPV4:
                             #Notify that its back up.
                             syslog.syslog('PingCheck host %s is back up' % str(host))
-                            DEADIPV4.remove(host)
-                        if host not in GOODIPV4:
-                        	GOODIPV4.append(host)
+                            self.DEADIPV4.remove(host)
+                        if host not in self.GOODIPV4:
+                        	self.GOODIPV4.append(host)
                     else:
                         #Its not alive  - DOWN
-                        if host not in DEADIPV4:
+                        if host not in self.DEADIPV4:
                             syslog.syslog('PingCheck host %s is down' % str(host))
-                            DEADIPV4.append(host)
-                        if host in GOODIPV4:
+                            self.DEADIPV4.append(host)
+                        if host in self.GOODIPV4:
                         	#need to remove it from our GOOD list.
-                            GOODIPV4.remove(host)
+                            self.GOODIPV4.remove(host)
 
-            #We need to have some local variables to use for HOLDUP and HOLDDOWN because the admin
-            #might change the values from the default. So lets just check this on each iteration.
-            #But if the admin changes this in the middle of an interation check, we should make sure ITERATION
+            # We need to have some local variables to use for HOLDUP and HOLDDOWN because the admin
+            # might change the values from the default. So lets just check this on each iteration.
+            # But if the admin changes this in the middle of an interation check, we should make sure ITERATION
             # is greater than or equal to the HOLDDOWN or HOLDUP values so we don't get stuck.
 
             if self.agentMgr.agent_option("HOLDDOWN"):
                 HOLDDOWNLOCAL = self.agentMgr.agent_option("HOLDDOWN")
             else:
-                HOLDDOWNLOCAL = HOLDDOWN
+                HOLDDOWNLOCAL = self.HOLDDOWN
             if self.agentMgr.agent_option("HOLDUP"):
                 HOLDUPLOCAL = self.agentMgr.agent_option("HOLDUP")
             else:
-                HOLDUPLOCAL = HOLDUP
+                HOLDUPLOCAL = self.HOLDUP
 
 			# Now we have all the ping state for each host. Lets do our additional logic here
             # Current implementaion is logical OR. So all we need is at least one host in GOODIPV4 list and we pass
-            if len(GOODIPV4) > 0:
+            if len(self.GOODIPV4) > 0:
             	# We have some life here...now we need to determine whether to recover or not based on our HOLDDOWN.
-                if CURRENTSTATUS == 0:
+                if self.CURRENTSTATUS == 0:
                 	#We were down, now determine if we should recover yet.
-                    if ITERATION >= int(HOLDDOWNLOCAL):
+                    if self.ITERATION >= int(HOLDDOWNLOCAL):
                     	# Recover
-                        CURRENTSTATUS = 1
-                        ITERATION = 0
+                        self.CURRENTSTATUS = 1
+                        self.ITERATION = 0
                         syslog.syslog("PingCheck Recovering. Changing configure for recovered state.")
-                        #RUN CONFIG Change
+                        # RUN CONFIG Change
                         self.change_config('RECOVER')
                     else:
-                    	ITERATION += 1
-                        #We need to wait till we hit our HOLDDOWN counter so we dampen a flapping condition if so exists
+                    	self.ITERATION += 1
+                        # We need to wait till we hit our HOLDDOWN counter so we dampen a flapping condition if so exists
             else:
-            	#We get here when everything is down...nothing in GOODIPV4 list
-                #Determine, are we already down? If so, noop. If not, then we need to determine if we are at HOLDDOWN.
-                if CURRENTSTATUS == 1:
-                	#Determine if we need to do something
-                    if ITERATION >= int(HOLDUPLOCAL):
+            	# We get here when everything is down...nothing in GOODIPV4 list
+                # Determine, are we already down? If so, noop. If not, then we need to determine if we are at HOLDDOWN.
+                if self.CURRENTSTATUS == 1:
+                	# Determine if we need to do something
+                    if self.ITERATION >= int(HOLDUPLOCAL):
                     	syslog.syslog("PingCheck Failure State. Changing configuration for failed state")
                         # run config change failure
                         self.change_config('FAIL')
                         #Set Currentstatus to 0, we're now in failed state
-                        CURRENTSTATUS = 0
+                        self.CURRENTSTATUS = 0
                         #Reset ITERATION
-                        ITERATION = 0
+                        self.ITERATION = 0
                     else:
-                    	ITERATION += 1
+                    	self.ITERATION += 1
 
             #Set current state via HealthStatus with agentMgr.
-            if CURRENTSTATUS == 1:
+            if self.CURRENTSTATUS == 1:
                 self.agentMgr.status_set("Health Status:", "GOOD")
             else:
                 self.agentMgr.status_set("Health Status:", "FAIL")
@@ -496,10 +516,10 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler):
                 nextRun = int(self.agentMgr.agent_option("CHECKINTERVAL")) - runTime
                 self.timeout_time_is(eossdk.now() + nextRun)
         else:
-            if runTime > int(CHECKINTERVAL):
+            if runTime > int(self.CHECKINTERVAL):
                 self.timeout_time_is(eossdk.now())
             else:
-                nextRun = int(CHECKINTERVAL) - runTime
+                nextRun = int(self.CHECKINTERVAL) - runTime
                 self.timeout_time_is(eossdk.now() + nextRun)
 
 
@@ -511,7 +531,6 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler):
         #Use EapiMgr to show interfaces and we'll make sure this
         #interface is ok to use.
         #Should we worry about capitalizing first char?
-        global SOURCEINTFADDR
         try:
             showint = self.EapiMgr.run_show_cmd("show ip interface %s" % SOURCE)
             interfaceID = simplejson.loads(showint.responses()[0])
@@ -520,69 +539,70 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler):
         except:
             ipaddr = ''
         if ipaddr:
-            SOURCEINTFADDR = ipaddr
+            self.SOURCEINTFADDR = ipaddr
             return ipaddr
         else:
             return False
 
-    def pingDUT(self,protocol,hostname, pingcount, source=None):
+    def pingDUT(self,hostname):
         """
         Ping a DUT(s).
-
-        Pass the following to the function:
-            protocol (Version 4 or 6)
-            host
-            pingcount (number of ICMP pings to send)
-
-            return False if ping fails
-            return True if ping succeeds
         """
-        global PINGTIMEOUT
-        pass
 
 
-    def pingDUTeAPI(self,protocol,hostname, pingcount, source=None):
-        """
-        Ping a DUT(s).
+        # Create a list of commands for subprocess Popen
+        vrf_commands = ['sudo','ip','netns','exec']
+        commands = ['ping']
 
-        Pass the following to the function:
-            protocol (Version 4 or 6)
-            host
-            pingcount (number of ICMP pings to send)
-
-            return False if ping fails
-            return True if ping succeeds
-        """
-        global PINGTIMEOUT
-        #
-        #Lets generate the entire ping command / string
-        if source is None:
-            pingline = "ping %s repeat %s" % (hostname,pingcount)
+        # Set our ping count parameter.
+        if self.agentMgr.agent_option("PINGCOUNT"):
+            commands.append('-c%s' % self.agentMgr.agent_option("PINGCOUNT"))
         else:
-            pingline = "ping %s repeat %s source %s" % (hostname,pingcount,source)
+            commands.append('-c%s' % str(self.PINGCOUNT))
+
+        # Set our ping timeout parameter.
         if self.agentMgr.agent_option("PINGTIMEOUT"):
-            pingline += " timeout %s" % self.agentMgr.agent_option("PINGTIMEOUT")
+            commands.append('-w%s' % self.agentMgr.agent_option("PINGTIMEOUT"))
         else:
-            pingline += " timeout %s" % str(PINGTIMEOUT)
-        pinghost = self.EapiMgr.run_show_cmd(pingline)
-        pinghostresponse=simplejson.loads(pinghost.responses()[0])
-        output = pinghostresponse.get("messages")
-        received = re.findall(r"(\d+) received", output[0])
+            commands.append('-w%s' % str(self.PINGTIMEOUT))
 
-        if len(received) == 0:
-            #If we get here, then interfaces are down and we can not ping anyway
-            #Error message   -- connect: Network is unreachable
-            #falls under this category. Pretty much any error message falls under this.
-            return False
+        if self.SOURCEINTFADDR:
+            _intf='-I%s' % self.SOURCEINTFADDR
+            commands.append(_intf)
+        if self.VrfMgr.exists(self.agentMgr.agent_option("VRF")):
+            #EOS prepends vrf with ns- in Kernel name space.
+            kernel_vrf = 'ns-' + str(self.agentMgr.agent_option("VRF"))
+            vrf_commands.append(kernel_vrf)
+            fullping_command = vrf_commands + commands + [hostname]
         else:
-            # we can safely assume this is a list as that is what re.findall returns
-            #if we get to this point because length check above was false.
-            if str(received[0]) == '0':
-                #we received 0 ICMP replies. Therefore host is down.
+            fullping_command = commands + [hostname]
+
+        try:
+            ping_host = sp.Popen(fullping_command,stdout=sp.PIPE,stderr=sp.PIPE)
+            output, err = ping_host.communicate()
+        except:
+            # We should not be here....
+            syslog.syslog("Error trying to execute ping")
+            syslog.syslog("Ping output: %s" % output)
+
+        if err != '':
+            # We get here in error conditions such as interface is not available
+            # e.g. interface is not in the vrf specified. We'll log it so user
+            # has a hint of what might be the issue. Otherwise, if we just return
+            # a value, it will not be clear. If the interface is down, the same error
+            # will occur.
+
+            # Let's provide a more useful error message.
+            if re.match('Cannot assign requested address', err):
+                syslog.syslog("%s. Interface is probably down." % err)
                 return False
-            else:
-                #we got something greater than 0. That is good enough of a check
-                return True
+
+        if ping_host.returncode == 0:
+            #Ping is good
+            return True
+        else:
+            return False
+
 
 
     def change_config(self, STATUS):
@@ -643,7 +663,7 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler):
 def main():
     syslog.openlog(ident="PingCheck-ALERT-AGENT",logoption=syslog.LOG_PID, facility=syslog.LOG_LOCAL4)
     sdk = eossdk.Sdk()
-    PingCheck = PingCheckAgent(sdk, sdk.get_timeout_mgr(),sdk.get_eapi_mgr())
+    PingCheck = PingCheckAgent(sdk, sdk.get_timeout_mgr(),sdk.get_vrf_mgr(),sdk.get_eapi_mgr())
     sdk.main_loop(sys.argv)
     # Run the agent until terminated by a signal
 
