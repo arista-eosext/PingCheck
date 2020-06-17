@@ -99,6 +99,7 @@ in your config change files. This is because, the EOS SDK eAPI interation module
 # Version 1.4.0 - 12/06/2018 - Fixed bug with startTime variable checking which could
 #                              lead to a core dump if no fail/recover files were found.
 #                              Added vrf support.
+# Version 1.4.1 - 06/17/2020 - Fix timeout parameter for Ping command.
 #*************************************************************************************
 #
 #
@@ -562,9 +563,9 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler, eossdk.VrfHandle
 
         # Set our ping timeout parameter.
         if self.agentMgr.agent_option("PINGTIMEOUT"):
-            commands.append('-w%s' % self.agentMgr.agent_option("PINGTIMEOUT"))
+            commands.append('-W%s' % self.agentMgr.agent_option("PINGTIMEOUT"))
         else:
-            commands.append('-w%s' % str(self.PINGTIMEOUT))
+            commands.append('-W%s' % str(self.PINGTIMEOUT))
 
         if self.SOURCEINTFADDR:
             _intf='-I%s' % self.SOURCEINTFADDR
