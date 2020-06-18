@@ -13,9 +13,10 @@ PingCheck Utility
 The purpose of this utility is to test ICMP reachability, alert if its down and
 run a configuration change. On recovery run another list of config changes specified in a recovery file.
 
-The failure is a logical 'OR'. Therefore, if you have two IP Hosts listed, both of them need to fail in order
+The IP host test is a logical 'OR'. Therefore, if you have two IP Hosts listed, both of them need to fail in order
 for a config change to be triggered. Same situation if you have 3 IP hosts listed, in that all 3 will have to fail
-in order for a configuration change to be triggered.
+in order for a configuration change to be triggered. In other words, only 1 IP needs to be ICMP reachable to maintain
+a HealthStatus of GOOD, or not fail the health check.
 
 This extension is similar to TCPCheck found here: https://github.com/arista-eosext/TCPCheck but PingCheck uses ICMP
 instead of HTTP.
@@ -83,7 +84,7 @@ configuration files, because it automatically goes into configuration mode.
 Additional dependencies and caveats:
 - This requires EOS SDK.
 - All new EOS releases include the SDK.
-- Tested on EOS release 4.22.3, 4.20.10 & 4.20.1
+- Tested on EOS release 4.24.1, 4.22.3, 4.20.10 & 4.20.1
 
 ## Example
 
@@ -151,7 +152,7 @@ An RPM has been included that allows you to easily just install PingCheck as an 
 the file requirements. The RPM also installs the PingCheck SDK app in /usr/local/bin. This is the preferred distribution 
 method for this application.
 
-This release has been tested on EOS 4.22.3 & 4.21.1F.
+This release has been tested on EOS 4.24.1F,4.22.3 & 4.21.1F.
 
 # WHAT'S NEW:
 - RPM now supports both 32 & 64bit EOS
