@@ -70,7 +70,7 @@ Config Option explanation:
 
 
 The CONF_FAIL and CONF_RECOVER files are just a list of commands to run at either Failure or at recovery. These commands
-must be full commands just as if you were configuration the switch from the CLI.
+must be FULL commands just as if you were configuration the switch from the CLI.
 
 For example the above referenced /mnt/flash/failed.conf file could include the following commands, which would
 shutdown the BGP neighbor on failure:
@@ -100,6 +100,7 @@ in your config change files. This is because, the EOS SDK eAPI interation module
 #                              lead to a core dump if no fail/recover files were found.
 #                              Added vrf support.
 # Version 1.4.1 - 06/17/2020 - Fix timeout parameter for Ping command.
+# Version 1.4.2 - 04/22/2021 - Added verbose error logging for applyconfig
 #*************************************************************************************
 #
 #
@@ -120,7 +121,7 @@ import socket
 
 
 __author__ = 'Jeremy Georges'
-__version__ = '1.4.0'
+__version__ = '1.4.2'
 
 #***************************
 #*     CLASSES             *
@@ -621,7 +622,7 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler, eossdk.VrfHandle
             # Strip out the whitespace
             configfile = [x.strip() for x in configfile]
 
-            # Check to make sure user has not specified 'enable' as the first command. This will error  in command mode
+            # Check to make sure user has not specified 'enable' as the first command. This will error  in config mode
             if configfile[0] == 'enable':
                 del configfile[0]
             # Now apply config changes
@@ -631,6 +632,8 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler, eossdk.VrfHandle
                     syslog.syslog("Applied Configuration changes from %s" % CONF_FAIL)
                 else:
                     syslog.syslog("Unable to apply configuration changes from %s" % CONF_FAIL)
+                    # provide some details on what error there was with configuration
+                    syslog.syslog("%s" % applyconfig.error_message())
             except:
                 syslog.syslog("Unable to apply config via eAPI interaction module in EOS SDK.")
                 return 0
@@ -641,7 +644,7 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler, eossdk.VrfHandle
             # Strip out the whitespace
             configfile = [x.strip() for x in configfile]
 
-            # Check to make sure user has not specified 'enable' as the first command. This will error  in command mode
+            # Check to make sure user has not specified 'enable' as the first command. This will error  in config mode
             if configfile[0] == 'enable':
                 del configfile[0]
 
@@ -652,6 +655,8 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler, eossdk.VrfHandle
                     syslog.syslog("Applied Configuration changes from %s" % CONF_RECOVER)
                 else:
                     syslog.syslog("Unable to apply configuration changes from %s" % CONF_RECOVER)
+                    # provide some details on what error there was with configuration
+                    syslog.syslog("%s" % applyconfig.error_message())
             except:
                 syslog.syslog("Unable to apply config via eAPI interaction module in EOS SDK.")
                 return 0

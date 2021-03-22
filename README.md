@@ -59,7 +59,7 @@ Config Option explanation:
 ```
 
 The CONF_FAIL and CONF_RECOVER files are just a list of commands to run at failure or at recovery. These commands
-must be full commands just as if you were configuration the switch from the CLI.
+should be **full commands** just as if you were configuration the switch from the CLI (i.e. not abbreviated commands).
 
 For example the above referenced /mnt/flash/failed.conf file could include the following commands, which would
 shutdown the BGP neighbor on failure:
@@ -131,7 +131,7 @@ Nov  6 16:59:26 edge-leaf-A PingCheck-ALERT-AGENT[14058]: PingCheck host 10.1.1.
 Nov  6 17:00:00 edge-leaf-A PingCheck-ALERT-AGENT[14058]: PingCheck Failure State. Changing configuration for failed state
 Nov  6 17:00:00 edge-leaf-A PingCheck-ALERT-AGENT[14058]: Applied Configuration changes from /mnt/flash/failed.conf
 .
-After Recover of Host...
+After Recovery of Host...
 .
 Nov  6 17:00:25 edge-leaf-A PingCheck-ALERT-AGENT[14058]: PingCheck host 10.1.1.6 is back up
 Nov  6 17:00:37 edge-leaf-A PingCheck-ALERT-AGENT[14058]: PingCheck host 10.1.1.2 is back up
