@@ -85,7 +85,8 @@ Additional dependencies and caveats:
 - This requires EOS SDK.
 - All new EOS releases include the SDK.
 - Tested on EOS release 4.24.1, 4.22.3, 4.20.10 & 4.20.1
-
+- It is NOT currently supported on any releases beyond 4.29+ which transitioned to Python3.
+- 
 ## Example
 
 ### Output of 'show daemon' command
