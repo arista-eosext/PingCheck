@@ -1,5 +1,5 @@
-#!/usr/bin/env arista-python
-# Copyright (c) 2024 Arista Networks, Inc.  All rights reserved.
+#!/usr/bin/env python
+# Copyright (c) 2018 Arista Networks, Inc.  All rights reserved.
 # Arista Networks, Inc. Confidential and Proprietary.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -37,7 +37,7 @@ Current version supports a list of hosts. The host checking is a logical OR, so
 only one host needs to respond. This is designed to reduce false positives.
 
 daemon PingCheck
-   exec /mnt/flash/PingCheck.py
+   exec /usr/local/bin/PingCheck
    option CHECKINTERVAL value 5
    option CONF_FAIL value /mnt/flash/failed.conf
    option CONF_RECOVER value /mnt/flash/recover.conf
@@ -98,12 +98,9 @@ in your config change files. This is because, the EOS SDK eAPI interation module
 # Version 1.3.1 - 11/13.2018 - Merge branch changes. Change syslog to Local4 so log messages show up in EOS log
 # Version 1.4.0 - 12/06/2018 - Fixed bug with startTime variable checking which could
 #                              lead to a core dump if no fail/recover files were found.
-#                              Added vrf support. Moved back to subprocess for vrf support.
+#                              Added vrf support.
 # Version 1.4.1 - 06/17/2020 - Fix timeout parameter for Ping command.
 # Version 1.4.2 - 04/22/2021 - Added verbose error logging for applyconfig
-# Version 1.4.3 - 01/08/2023 - Python3 changes - TESTVERSION.
-# Version 1.4.4 - 03/14/2024 - change simplejson to json since simpejson removed in EOS 4.31
-# Version 1.4.5 - 04/25/2024 - Add some addtional exception logging.
 #*************************************************************************************
 #
 #
@@ -117,14 +114,14 @@ import syslog
 import eossdk
 import os.path
 import os
-import json
+import simplejson
 import re
 import subprocess as sp
 import socket
 
 
 __author__ = 'Jeremy Georges'
-__version__ = '1.4.5'
+__version__ = '1.4.2'
 
 #***************************
 #*     CLASSES             *
@@ -179,19 +176,19 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler, eossdk.VrfHandle
         syslog.syslog("PingCheck Initialized")
         self.agentMgr.status_set("Status:", "Administratively Up")
 
-        # We'll pass this on to on_agent_option to process each of these.
+        #We'll pass this on to on_agent_option to process each of these.
         self.on_agent_option("CONF_FAIL", self.agentMgr.agent_option("CONF_FAIL"))
         self.on_agent_option("CONF_RECOVER", self.agentMgr.agent_option("CONF_RECOVER"))
         IPv4 = self.agentMgr.agent_option("IPv4")
         if not IPv4:
-            # No IPv4 list of IPs initially set
-            self.agentMgr.status_set("IPv4 Ping List:", "None")
+           # No IPv4 list of IPs initially set
+           self.agentMgr.status_set("IPv4 Ping List:", "None")
         else:
-            # Handle the initial state
-            self.on_agent_option("IPv4", IPv4)
+           # Handle the initial state
+           self.on_agent_option("IPv4", IPv4)
 
-        # Lets check the extra parameters and see if we should override the defaults
-        # This is mostly for the status message.
+        #Lets check the extra parameters and see if we should override the defaults
+        #This is mostly for the status message.
         if self.agentMgr.agent_option("CHECKINTERVAL"):
             self.on_agent_option("CHECKINTERVAL", self.agentMgr.agent_option("CHECKINTERVAL"))
         else:
@@ -207,7 +204,7 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler, eossdk.VrfHandle
         if self.agentMgr.agent_option("HOLDDOWN"):
             self.on_agent_option("HOLDDOWN", self.agentMgr.agent_option("HOLDDOWN"))
         else:
-            # We'll just use the default holddown specified by global variable
+            #We'll just use the default holddown specified by global variable
             self.agentMgr.status_set("HOLDDOWN:", "%s" % self.HOLDDOWN)
 
         if self.agentMgr.agent_option("HOLDUP"):
@@ -222,20 +219,20 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler, eossdk.VrfHandle
             # We'll just use the default holddown specified by instance variable
             self.agentMgr.status_set("PINGTIMEOUT:", "%s" % self.PINGTIMEOUT)
 
-        # Some basic mandatory variable checks. We'll check this when we have a
-        # no shut on the daemon. Add some notes in comment and Readme.md to
-        # recommend a shut and no shut every time you make parameter changes...
+        #Some basic mandatory variable checks. We'll check this when we have a
+        #no shut on the daemon. Add some notes in comment and Readme.md to recommend
+        #a shut and no shut every time you make parameter changes...
 
         self.agentMgr.status_set("Health Status:", "Unknown")
 
 
-        # Start our handler now.
+        #Start our handler now.
         self.timeout_time_is(eossdk.now())
 
 
     def on_agent_option(self, optionName, value):
-        # options are a key/value pair
-        # Here we set the status output when user does a show agent command
+        #options are a key/value pair
+        #Here we set the status output when user does a show agent command
         if optionName == "IPv4":
             if not value:
                 self.tracer.trace3("IPv4 List Deleted")
@@ -302,7 +299,7 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler, eossdk.VrfHandle
                 self.agentMgr.status_set("VRF:", "%s" % value)
 
     def on_agent_enabled(self, enabled):
-        # When shutdown set status and then shutdown
+        #When shutdown set status and then shutdown
         if not enabled:
             self.tracer.trace0("Shutting down")
             self.agentMgr.status_del("Status:")
@@ -336,7 +333,7 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler, eossdk.VrfHandle
                     return 0
 
 
-        # Make sure CONF file mandatory parameters are set
+        #Make sure CONF file mandatory parameters are set
         if not self.agentMgr.agent_option("CONF_FAIL"):
             syslog.syslog("CONF_FAIL parameter is not set. This is a mandatory parameter")
             return 0
@@ -344,8 +341,8 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler, eossdk.VrfHandle
             syslog.syslog("CONF_RECOVER parameter is not set. This is a mandatory parameter")
             return 0
 
-        # If we get here, then we know our config file parameters have been setself.
-        # Now lets check to make sure the files actually exist.
+        #If we get here, then we know our config file parameters have been setself.
+        #Now lets check to make sure the files actually exist.
         TESTFILE=self.agentMgr.agent_option("CONF_FAIL")
         if not os.path.isfile(TESTFILE):
             syslog.syslog("CONF_FAIL %s does not exist. This is mandatory." % TESTFILE)
@@ -361,13 +358,13 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler, eossdk.VrfHandle
             syslog.syslog("CONF_RECOVER %s is blank. You need at least one command listed." % TESTFILE)
             return 0
 
-        # Check pingtimeout settings if it was set. Can only be 0-3600
+        #Check pingtimeout settings if it was set. Can only be 0-3600
         if self.agentMgr.agent_option("PINGTIMEOUT"):
             if int(self.agentMgr.agent_option("PINGTIMEOUT")) > 3600:
                 syslog.syslog("PINGTIMEOUT must not exceed 3600 seconds.")
                 return 0
 
-        # Check the Source variable if it is defined..
+        #Check the Source variable if it is defined..
         if self.agentMgr.agent_option("SOURCE"):
             # check using eAPI module. And return the IP of interface.
             # we need to do this, because if interface is down, ping can choose
@@ -378,12 +375,12 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler, eossdk.VrfHandle
 
         # If VRF option set, check to make sure it really exists.
         if self.agentMgr.agent_option("VRF"):
-            if not self.VrfMgr.exists(self.agentMgr.agent_option("VRF")):
-                # This means the VRF does not exist
-                syslog.syslog("VRF %s does not exist." % self.agentMgr.agent_option("VRF"))
-                return 0
+                if not self.VrfMgr.exists(self.agentMgr.agent_option("VRF")):
+                    #This means the VRF does not exist
+                    syslog.syslog("VRF %s does not exist." % self.agentMgr.agent_option("VRF"))
+                    return 0
 
-        # If we get here, then we're good!
+        #If we get here, then we're good!
         #
         return 1
 
@@ -405,55 +402,53 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler, eossdk.VrfHandle
         # and will show this via the status.
         if self.check_vars() == 1:
 
-            # Here we do all the fun work and testing
+            #Here we do all the fun work and testing
 
-            # Check state, are we UP or FAILED state?
-            # If up, lets check each of our addresses.
-            # For this particular use case, its a logical OR for our addresses.
-            # If any are up, then we mark this as good
-            # If ALL are down, then we mark as bad
-            # We also need to mark the iteration number which is important
+
+            #Check state, are we UP or FAILED state?
+            #If up, lets check each of our addresses.
+            #For this particular use case, its a logical OR for our addresses.
+            #If any are up, then we mark this as good
+            #If ALL are down, then we mark as bad
+            #We also need to mark the iteration number which is important
             # for our holddown number.
             #
 
-            # We could just react to single failure or recovery. But this is not
-            # as versatile. What happens if remote rate limits pings so we have
-            # a false positive? This is why we need to make sure that all our
-            # hosts in our list are down before we consider this an issue.
-            # Lets test each host in list and then we will populate DEAD or GOOD
-            # global list. Then it is easier to do our logic or change it after
-            # all the checks.
+            #We could just react to single failure or recovery. But this is not as versatile.
+            #What happens if remote rate limits pings so we have a false positive? This is why
+            # we need to make sure that all our hosts in our list are down before we consider
+            #this an issue.
+            #Lets test each host in list and then we will populate DEAD or GOOD global list.
+            #Then it is easier to do our logic or change it after all the checks.
 
             IPv4 = self.agentMgr.agent_option("IPv4")
             if IPv4:
                 EachAddress = IPv4.split(',')
                 for host in EachAddress:
                     pingstatus = self.pingDUT(str(host))
-                    # After ping status, lets go over all the various test cases below
+                    #After ping status, lets go over all the various test cases below
                     if pingstatus == True:
-                        # Its alive - UP
-                        # Check to see if it was in our dead list
+                        #Its alive - UP
+                        #Check to see if it was in our dead list
                         if host in self.DEADIPV4:
                             #Notify that its back up.
                             syslog.syslog('PingCheck host %s is back up' % str(host))
                             self.DEADIPV4.remove(host)
                         if host not in self.GOODIPV4:
-                            self.GOODIPV4.append(host)
+                        	self.GOODIPV4.append(host)
                     else:
-                        # Its not alive  - DOWN
+                        #Its not alive  - DOWN
                         if host not in self.DEADIPV4:
                             syslog.syslog('PingCheck host %s is down' % str(host))
                             self.DEADIPV4.append(host)
                         if host in self.GOODIPV4:
-                        	# need to remove it from our GOOD list.
+                        	#need to remove it from our GOOD list.
                             self.GOODIPV4.remove(host)
 
-            # We need to have some local variables to use for HOLDUP and
-            # HOLDDOWN because the admin might change the values from the
-            # default. So lets just check this on each iteration.
-            # But if the admin changes this in the middle of an interation
-            # check, we should make sure ITERATION is greater than or equal
-            # to the HOLDDOWN or HOLDUP values so we don't get stuck.
+            # We need to have some local variables to use for HOLDUP and HOLDDOWN because the admin
+            # might change the values from the default. So lets just check this on each iteration.
+            # But if the admin changes this in the middle of an interation check, we should make sure ITERATION
+            # is greater than or equal to the HOLDDOWN or HOLDUP values so we don't get stuck.
 
             if self.agentMgr.agent_option("HOLDDOWN"):
                 HOLDDOWNLOCAL = self.agentMgr.agent_option("HOLDDOWN")
@@ -464,13 +459,10 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler, eossdk.VrfHandle
             else:
                 HOLDUPLOCAL = self.HOLDUP
 
-			# Now we have all the ping state for each host. Lets do our
-            # additional logic here
-            # Current implementaion is logical OR. So all we need is at least
-            # one host in GOODIPV4 list and we pass
+			# Now we have all the ping state for each host. Lets do our additional logic here
+            # Current implementaion is logical OR. So all we need is at least one host in GOODIPV4 list and we pass
             if len(self.GOODIPV4) > 0:
-            	# We have some life here...now we need to determine whether to
-                # recover or not based on our HOLDDOWN.
+            	# We have some life here...now we need to determine whether to recover or not based on our HOLDDOWN.
                 if self.CURRENTSTATUS == 0:
                 	#We were down, now determine if we should recover yet.
                     if self.ITERATION >= int(HOLDDOWNLOCAL):
@@ -481,17 +473,15 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler, eossdk.VrfHandle
                         # RUN CONFIG Change
                         self.change_config('RECOVER')
                     else:
-                        self.ITERATION += 1
-                        # We need to wait till we hit our HOLDDOWN counter so
-                        # we dampen a flapping condition if so exists
+                    	self.ITERATION += 1
+                        # We need to wait till we hit our HOLDDOWN counter so we dampen a flapping condition if so exists
             else:
             	# We get here when everything is down...nothing in GOODIPV4 list
-                # Determine, are we already down? If so, noop. If not, then we
-                # need to determine if we are at HOLDDOWN.
+                # Determine, are we already down? If so, noop. If not, then we need to determine if we are at HOLDDOWN.
                 if self.CURRENTSTATUS == 1:
                 	# Determine if we need to do something
                     if self.ITERATION >= int(HOLDUPLOCAL):
-                        syslog.syslog("PingCheck Failure State. Changing configuration for failed state")
+                    	syslog.syslog("PingCheck Failure State. Changing configuration for failed state")
                         # run config change failure
                         self.change_config('FAIL')
                         #Set Currentstatus to 0, we're now in failed state
@@ -499,7 +489,7 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler, eossdk.VrfHandle
                         #Reset ITERATION
                         self.ITERATION = 0
                     else:
-                        self.ITERATION += 1
+                    	self.ITERATION += 1
 
             # Set current state via HealthStatus with agentMgr.
             if self.CURRENTSTATUS == 1:
@@ -546,7 +536,7 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler, eossdk.VrfHandle
         # Should we worry about capitalizing first char?
         try:
             showint = self.EapiMgr.run_show_cmd("show ip interface %s" % SOURCE)
-            interfaceID = json.loads(showint.responses()[0])
+            interfaceID = simplejson.loads(showint.responses()[0])
             for item in interfaceID['interfaces'].keys():
                 ipaddr = interfaceID['interfaces'][item]['interfaceAddress']['primaryIp']['address']
         except:
@@ -605,9 +595,8 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler, eossdk.VrfHandle
             # will occur.
 
             # Let's provide a more useful error message.
-            # Python3 changed the behavior here. so lets force to a string.
-            if re.match('Cannot assign requested address', str(err)):
-                syslog.syslog("%s. Interface is probably down." % str(err))
+            if re.match('Cannot assign requested address', err):
+                syslog.syslog("%s. Interface is probably down." % err)
                 return False
 
         if ping_host.returncode == 0:
@@ -639,16 +628,14 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler, eossdk.VrfHandle
             # Now apply config changes
             try:
                 applyconfig = self.EapiMgr.run_config_cmds([z for z in configfile])
-                if applyconfig.success():
+                if(applyconfig.success()):
                     syslog.syslog("Applied Configuration changes from %s" % CONF_FAIL)
                 else:
                     syslog.syslog("Unable to apply configuration changes from %s" % CONF_FAIL)
                     # provide some details on what error there was with configuration
                     syslog.syslog("%s" % applyconfig.error_message())
-            except Exception as ex:
-                # Log why we got the exception.
+            except:
                 syslog.syslog("Unable to apply config via eAPI interaction module in EOS SDK.")
-                syslog.syslog(str(ex))
                 return 0
         else:
             self.tracer.trace0("Status Recover. Applying config changes.")
@@ -664,16 +651,14 @@ class PingCheckAgent(eossdk.AgentHandler,eossdk.TimeoutHandler, eossdk.VrfHandle
             # Now apply config changes
             try:
                 applyconfig = self.EapiMgr.run_config_cmds([z for z in configfile])
-                if applyconfig.success():
+                if(applyconfig.success()):
                     syslog.syslog("Applied Configuration changes from %s" % CONF_RECOVER)
                 else:
                     syslog.syslog("Unable to apply configuration changes from %s" % CONF_RECOVER)
                     # provide some details on what error there was with configuration
                     syslog.syslog("%s" % applyconfig.error_message())
-            except Exception as ex:
-                # Log why we got the exception.
+            except:
                 syslog.syslog("Unable to apply config via eAPI interaction module in EOS SDK.")
-                syslog.syslog(str(ex))
                 return 0
 
         return 1
