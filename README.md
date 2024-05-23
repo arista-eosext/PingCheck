@@ -26,7 +26,7 @@ To use PingCheck, after installing, add the following configuration snippets to 
 
 ```
 daemon PingCheck
-   exec /usr/local/bin/PingCheck
+   exec /mnt/flash/PingCheck.py
    option CHECKINTERVAL value 5
    option CONF_FAIL value /mnt/flash/failed.conf
    option CONF_RECOVER value /mnt/flash/recover.conf
@@ -82,11 +82,12 @@ Please note, this uses the EOS SDK eAPI interaction module. You do not need to s
 configuration files, because it automatically goes into configuration mode.
 
 Additional dependencies and caveats:
-- This requires EOS SDK.
+- This requires the EOS SDK.
 - All new EOS releases include the SDK.
-- Tested on EOS release 4.24.1, 4.22.3, 4.20.10 & 4.20.1
-- It is NOT currently supported on any releases beyond 4.29+ which transitioned to Python3.
-- 
+- This release is only supported on EOS 4.28 and above. 
+- Use the legacy release for older versions of EOS with the RPM and README file in that directory.
+- If your CONF_RECOVER or CONF_FAILED file has quotes, you must escape those quotes, otherwise you'll get an error parsing those lines.
+
 ## Example
 
 ### Output of 'show daemon' command
@@ -143,22 +144,14 @@ Nov  6 17:00:39 edge-leaf-A PingCheck-ALERT-AGENT[14058]: Applied Configuration 
 
 
 # INSTALLATION:
-Because newer releases of EOS require a SysdbMountProfile, you'll need two files - PingCheck.py and PingCheck.sysdb
-PingCheck.py will need to go to an appropriate location such as /mnt/flash and PingCheck.sysdb will need to be placed in 
-/usr/lib/SysdbMountProfiles. The mount profile file name MUST match the python file name. In other words, if 
-you place the mount profile PingCheck in /usr/lib/SysdbMountProfiles as PingCheck, then the executable filename PingCheck.py 
-must be changed to PingCheck. The filename (agent name) and mount profile name must be the same.
+Simply copy the PingCheck.py file from this repo to the switch in /mnt/flash. Make sure you have it set as executable such as 'chmod +x /mnt/flash/PingCheck.py'.
 
-An RPM has been included that allows you to easily just install PingCheck as an extension and it takes care of all
-the file requirements. The RPM also installs the PingCheck SDK app in /usr/local/bin. This is the preferred distribution 
-method for this application.
-
-This release has been tested on EOS 4.24.1F,4.22.3 & 4.21.1F.
+This release has been tested on EOS 4.28, 4.29, 4.30, 4.31 and 4.32 point releases.
 
 # WHAT'S NEW:
-- RPM now supports both 32 & 64bit EOS
+- Python3 support
 - VRF support
-- Additional syntax checking
+- Additional syntax checking and logging
 
 License
 =======
