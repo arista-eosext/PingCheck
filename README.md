@@ -148,6 +148,9 @@ Simply copy the PingCheck.py file from this repo to the switch in /mnt/flash. Ma
 
 This release has been tested on EOS 4.28, 4.29, 4.30, 4.31 and 4.32 point releases.
 
+Based on licensing, this is open source and this and other open-source tools are not supported directly by Arista Support. 
+Support is best effort as it relates to extensions such as this one. If issues are found, please create an Issue under this github repository. 
+
 # WHAT'S NEW:
 - Python3 support
 - VRF support
